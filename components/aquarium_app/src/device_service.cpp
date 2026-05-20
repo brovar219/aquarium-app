@@ -57,12 +57,13 @@ void DeviceService::apply_show_guests_locked() {
 
 void DeviceService::apply_manual_light_locked() {
   state_.phase_label = "Ручний режим";
-  light_.set_rgbw(manual_.r, manual_.g, manual_.b, manual_.w, manual_.brightness);
-  state_.out_r = manual_.r;
-  state_.out_g = manual_.g;
-  state_.out_b = manual_.b;
-  state_.out_w = manual_.w;
-  state_.out_brightness = manual_.brightness;
+  light_.set_rgbw(settings_.manual_r, settings_.manual_g, settings_.manual_b, settings_.manual_w,
+                  settings_.manual_brightness);
+  state_.out_r = settings_.manual_r;
+  state_.out_g = settings_.manual_g;
+  state_.out_b = settings_.manual_b;
+  state_.out_w = settings_.manual_w;
+  state_.out_brightness = settings_.manual_brightness;
 }
 
 void DeviceService::apply_auto_light_locked() {
@@ -212,11 +213,11 @@ std::string DeviceService::handle_ws_json(const char* json) {
   }
 
   if (strcmp(cmd, "set_manual_rgbw") == 0) {
-    manual_.r = json_float(root, "r");
-    manual_.g = json_float(root, "g");
-    manual_.b = json_float(root, "b");
-    manual_.w = json_float(root, "w");
-    manual_.brightness = json_float(root, "brightness");
+    settings_.manual_r = json_float(root, "r");
+    settings_.manual_g = json_float(root, "g");
+    settings_.manual_b = json_float(root, "b");
+    settings_.manual_w = json_float(root, "w");
+    settings_.manual_brightness = json_float(root, "brightness");
     settings_.operation_mode = OperationMode::MANUAL;
     state_.scene_mode = SceneMode::MANUAL;
     dirty_settings_ = true;
@@ -288,6 +289,198 @@ std::string DeviceService::handle_ws_json(const char* json) {
   cJSON_Delete(root);
   xSemaphoreGive(mutex_);
   return R"({"type":"error","msg":"unknown cmd"})";
+}
+
+static float clamp01(float x) {
+  if (x < 0.F) {
+    return 0.F;
+  }
+  if (x > 1.F) {
+    return 1.F;
+  }
+  return x;
+}
+
+static float clamp_hour(float x) {
+  if (x < 0.F) {
+    return 0.F;
+  }
+  if (x > 24.F) {
+    return 24.F;
+  }
+  return x;
+}
+
+static float clamp_pct(float x) {
+  if (x < 0.F) {
+    return 0.F;
+  }
+  if (x > 200.F) {
+    return 200.F;
+  }
+  return x;
+}
+
+char* DeviceService::export_settings_data_json_malloc() const {
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(500)) != pdTRUE) {
+    return nullptr;
+  }
+  cJSON* d = cJSON_CreateObject();
+  if (!d) {
+    xSemaphoreGive(mutex_);
+    return nullptr;
+  }
+  cJSON_AddStringToObject(d, "operation_mode", operation_mode_to_api(settings_.operation_mode).c_str());
+  cJSON_AddStringToObject(d, "light_program", light_program_to_api(settings_.light_program).c_str());
+  cJSON_AddNumberToObject(d, "hour_start", settings_.hour_start);
+  cJSON_AddNumberToObject(d, "hour_end", settings_.hour_end);
+  cJSON_AddNumberToObject(d, "hour_moon_end", settings_.hour_moon_end);
+  cJSON_AddNumberToObject(d, "max_brightness_pct", settings_.max_brightness_pct);
+  cJSON_AddNumberToObject(d, "brightness_trim_pct", settings_.brightness_trim_pct);
+  cJSON_AddNumberToObject(d, "moon_brightness_pct", settings_.moon_brightness_pct);
+  cJSON_AddBoolToObject(d, "acclimation", settings_.acclimation);
+  cJSON_AddBoolToObject(d, "pump_on", settings_.pump_on);
+  cJSON_AddBoolToObject(d, "thermal_throttle", state_.thermal_throttle);
+  cJSON_AddNumberToObject(d, "scene_mode", static_cast<double>(static_cast<int>(state_.scene_mode)));
+
+  cJSON* man = cJSON_CreateObject();
+  if (man) {
+    cJSON_AddNumberToObject(man, "r", settings_.manual_r);
+    cJSON_AddNumberToObject(man, "g", settings_.manual_g);
+    cJSON_AddNumberToObject(man, "b", settings_.manual_b);
+    cJSON_AddNumberToObject(man, "w", settings_.manual_w);
+    cJSON_AddNumberToObject(man, "brightness", settings_.manual_brightness);
+    cJSON_AddItemToObject(d, "manual", man);
+  }
+
+  xSemaphoreGive(mutex_);
+  char* out = cJSON_PrintUnformatted(d);
+  cJSON_Delete(d);
+  return out;
+}
+
+std::string DeviceService::import_settings_data_json(const char* json_object) {
+  cJSON* root = cJSON_Parse(json_object);
+  if (!root || !cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    return "json";
+  }
+
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(500)) != pdTRUE) {
+    cJSON_Delete(root);
+    return "busy";
+  }
+
+  cJSON* it = cJSON_GetObjectItemCaseSensitive(root, "operation_mode");
+  if (cJSON_IsString(it) && it->valuestring) {
+    OperationMode m{};
+    if (operation_mode_from_api(it->valuestring, m)) {
+      settings_.operation_mode = m;
+      if (m == OperationMode::AUTO_24H) {
+        state_.scene_mode = SceneMode::AUTO;
+      }
+      dirty_settings_ = true;
+    }
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "light_program");
+  if (cJSON_IsString(it) && it->valuestring) {
+    LightProgram p{};
+    if (light_program_from_api(it->valuestring, p)) {
+      settings_.light_program = p;
+      dirty_settings_ = true;
+    }
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "hour_start");
+  if (cJSON_IsNumber(it)) {
+    settings_.hour_start = clamp_hour(static_cast<float>(it->valuedouble));
+    dirty_settings_ = true;
+  }
+  it = cJSON_GetObjectItemCaseSensitive(root, "hour_end");
+  if (cJSON_IsNumber(it)) {
+    settings_.hour_end = clamp_hour(static_cast<float>(it->valuedouble));
+    dirty_settings_ = true;
+  }
+  it = cJSON_GetObjectItemCaseSensitive(root, "hour_moon_end");
+  if (cJSON_IsNumber(it)) {
+    settings_.hour_moon_end = clamp_hour(static_cast<float>(it->valuedouble));
+    dirty_settings_ = true;
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "max_brightness_pct");
+  if (cJSON_IsNumber(it)) {
+    settings_.max_brightness_pct = clamp_pct(static_cast<float>(it->valuedouble));
+    dirty_settings_ = true;
+  }
+  it = cJSON_GetObjectItemCaseSensitive(root, "brightness_trim_pct");
+  if (cJSON_IsNumber(it)) {
+    settings_.brightness_trim_pct = clamp_pct(static_cast<float>(it->valuedouble));
+    dirty_settings_ = true;
+  }
+  it = cJSON_GetObjectItemCaseSensitive(root, "moon_brightness_pct");
+  if (cJSON_IsNumber(it)) {
+    settings_.moon_brightness_pct = clamp_pct(static_cast<float>(it->valuedouble));
+    dirty_settings_ = true;
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "acclimation");
+  if (cJSON_IsBool(it)) {
+    settings_.acclimation = cJSON_IsTrue(it);
+    dirty_settings_ = true;
+  }
+  it = cJSON_GetObjectItemCaseSensitive(root, "pump_on");
+  if (cJSON_IsBool(it)) {
+    settings_.pump_on = cJSON_IsTrue(it);
+    dirty_settings_ = true;
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "thermal_throttle");
+  if (cJSON_IsBool(it)) {
+    state_.thermal_throttle = cJSON_IsTrue(it);
+    dirty_settings_ = true;
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "scene_mode");
+  if (cJSON_IsNumber(it)) {
+    const int v = static_cast<int>(it->valuedouble);
+    if (v >= 0 && v <= 6) {
+      state_.scene_mode = static_cast<SceneMode>(v);
+    }
+  }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "manual");
+  if (cJSON_IsObject(it)) {
+    cJSON* j = cJSON_GetObjectItemCaseSensitive(it, "r");
+    if (cJSON_IsNumber(j)) {
+      settings_.manual_r = clamp01(static_cast<float>(j->valuedouble));
+      dirty_settings_ = true;
+    }
+    j = cJSON_GetObjectItemCaseSensitive(it, "g");
+    if (cJSON_IsNumber(j)) {
+      settings_.manual_g = clamp01(static_cast<float>(j->valuedouble));
+      dirty_settings_ = true;
+    }
+    j = cJSON_GetObjectItemCaseSensitive(it, "b");
+    if (cJSON_IsNumber(j)) {
+      settings_.manual_b = clamp01(static_cast<float>(j->valuedouble));
+      dirty_settings_ = true;
+    }
+    j = cJSON_GetObjectItemCaseSensitive(it, "w");
+    if (cJSON_IsNumber(j)) {
+      settings_.manual_w = clamp01(static_cast<float>(j->valuedouble));
+      dirty_settings_ = true;
+    }
+    j = cJSON_GetObjectItemCaseSensitive(it, "brightness");
+    if (cJSON_IsNumber(j)) {
+      settings_.manual_brightness = clamp01(static_cast<float>(j->valuedouble));
+      dirty_settings_ = true;
+    }
+  }
+
+  cJSON_Delete(root);
+  xSemaphoreGive(mutex_);
+  return {};
 }
 
 }  // namespace aq

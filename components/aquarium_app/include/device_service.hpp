@@ -20,6 +20,11 @@ class DeviceService {
   /** Обробка однієї WS JSON-команди; повертає текст відповіді (state або ack). */
   std::string handle_ws_json(const char* json);
 
+  /** JSON-об'єкт полів налаштувань (malloc — викликати `free()`). */
+  char* export_settings_data_json_malloc() const;
+  /** Часткове оновлення з JSON-об'єкта; порожній рядок = ОК, інакше код помилки. */
+  std::string import_settings_data_json(const char* json_object);
+
   DeviceState snapshot() const;
 
  private:
@@ -38,8 +43,6 @@ class DeviceService {
   mutable SemaphoreHandle_t mutex_;
   PersistedSettings settings_;
   DeviceState state_;
-
-  RgbwTarget manual_{1.F, 1.F, 1.F, 1.F, 1.F};
 
   bool dirty_settings_{false};
 };
