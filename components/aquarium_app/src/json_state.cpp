@@ -4,6 +4,9 @@
 #include <cstring>
 
 #include "cJSON.h"
+#include "esp_app_desc.h"
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
 
 namespace aq {
 
@@ -47,6 +50,21 @@ char* state_to_json_malloc(const DeviceState& s) {
   cJSON_AddNumberToObject(d, "time_s", s.time_s);
   cJSON_AddNumberToObject(d, "wifi_rssi", s.wifi_rssi);
   cJSON_AddNumberToObject(d, "uptime_ms", static_cast<double>(s.uptime_ms));
+
+  const esp_app_desc_t* app = esp_app_get_description();
+  if (app != nullptr) {
+    cJSON_AddStringToObject(d, "fw_version", app->version);
+    cJSON_AddStringToObject(d, "fw_idf", app->idf_ver);
+  } else {
+    cJSON_AddNullToObject(d, "fw_version");
+    cJSON_AddNullToObject(d, "fw_idf");
+  }
+  const esp_partition_t* run = esp_ota_get_running_partition();
+  if (run != nullptr && run->label != nullptr) {
+    cJSON_AddStringToObject(d, "ota_partition", run->label);
+  } else {
+    cJSON_AddNullToObject(d, "ota_partition");
+  }
 
   char* out = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
