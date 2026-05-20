@@ -55,11 +55,23 @@
     <input id="mbr" type="range" min="0" max="100" value="100" />
     <button type="button" id="btnApplyManual">Застосувати ручний</button>
   </div>
+  <h2>Оновлення прошивки (OTA)</h2>
+  <p class="row">Поточна версія (зі стану): <code id="fwver">—</code> · слот: <code id="otaslot">—</code></p>
+  <p class="row">Оберіть файл <code>build/aquarium-che.bin</code> після <code>idf.py build</code> на тому ж <code>esp32c6</code>, що й пристрій.</p>
+  <div class="row">
+    <input type="file" id="fwfile" accept=".bin,application/octet-stream" />
+    <button type="button" id="btnOta">Завантажити та перезавантажити</button>
+  </div>
+  <p id="otastat" class="row"></p>
+
   <h2>Стан (JSON)</h2>
   <div id="log"></div>
   <script>
     const logEl = document.getElementById('log');
     const wsstat = document.getElementById('wsstat');
+    const fwver = document.getElementById('fwver');
+    const otaslot = document.getElementById('otaslot');
+    const otastat = document.getElementById('otastat');
     function log(line) { logEl.textContent = line + '\n' + logEl.textContent; }
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -78,7 +90,9 @@
       ws.onmessage = (ev) => {
         try {
           const j = JSON.parse(ev.data);
-          if (j.type === 'state') {
+          if (j.type === 'state' && j.data) {
+            if (j.data.fw_version != null) fwver.textContent = j.data.fw_version;
+            if (j.data.ota_partition != null) otaslot.textContent = j.data.ota_partition;
             log(JSON.stringify(j.data, null, 2));
           } else {
             log(ev.data);
@@ -95,6 +109,35 @@
     document.getElementById('program').onchange = (e) => send({type:'cmd', name:'set_light_program', value: e.target.value});
     document.getElementById('btnPumpOn').onclick = () => send({type:'cmd', name:'set_pump', on: true});
     document.getElementById('btnPumpOff').onclick = () => send({type:'cmd', name:'set_pump', on: false});
+    document.getElementById('btnOta').onclick = async () => {
+      const f = document.getElementById('fwfile').files[0];
+      if (!f) {
+        otastat.textContent = 'Оберіть файл .bin';
+        otastat.className = 'row bad';
+        return;
+      }
+      otastat.textContent = 'Завантаження… не закривайте сторінку';
+      otastat.className = 'row';
+      try {
+        const r = await fetch('/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: f
+        });
+        const t = await r.text();
+        if (r.ok) {
+          otastat.textContent = t + ' — з\'єднання зникне під час перезавантаження.';
+          otastat.className = 'row ok';
+        } else {
+          otastat.textContent = r.status + ': ' + t;
+          otastat.className = 'row bad';
+        }
+      } catch (e) {
+        otastat.textContent = 'Мережа: ' + e + ' (часто так буває після успішного OTA — зачекайте й оновіть сторінку)';
+        otastat.className = 'row bad';
+      }
+    };
+
     document.getElementById('btnApplyManual').onclick = () => {
       const r = document.getElementById('mr').value / 100;
       const g = document.getElementById('mg').value / 100;
