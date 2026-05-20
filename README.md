@@ -13,6 +13,8 @@
 
 Відкрийте в браузері `http://<IP-пристрою>/` — завантажується одна HTML-сторінка; усі оновлення та команди йдуть через WebSocket `ws://<IP>/ws`.
 
+**OTA:** після першого переходу на таблицю розділів з двома слотами (`TWO_OTA_LARGE`) зробіть повний `flash` (за потреби `erase-flash`). Далі можна заливати зібраний `build/aquarium-che.bin` через форму на сторінці або `curl -X POST --data-binary @build/aquarium-che.bin http://<IP>/update`.
+
 ## Структура
 
 - `components/aquarium_app/` — основний код (модель, HAL, сервіс, HTTP/WS).
