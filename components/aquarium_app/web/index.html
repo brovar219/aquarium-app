@@ -5,56 +5,126 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Акваріум — панель</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 1rem; background: #0b1220; color: #e8eefc; }
+    body { font-family: system-ui, sans-serif; margin: 1rem; background: #0b1220; color: #e8eefc; max-width: 960px; }
     h1 { font-size: 1.2rem; }
-    #log { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; background: #111827; padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
+    h2 { font-size: 1rem; margin-top: 1.25rem; border-bottom: 1px solid #334155; padding-bottom: 4px; }
+    #log { font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; background: #111827; padding: 8px; border-radius: 6px; max-height: 180px; overflow: auto; }
     button, select { margin: 4px 4px 4px 0; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; cursor: pointer; }
     button:hover { background: #334155; }
-    .row { margin: 8px 0; }
-    label { display: inline-block; min-width: 140px; }
+    .row { margin: 8px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    label { min-width: 160px; }
     .ok { color: #4ade80; }
     .bad { color: #f87171; }
+    fieldset { border: 1px solid #334155; border-radius: 8px; margin: 10px 0; padding: 10px; }
+    legend { padding: 0 6px; color: #94a3b8; }
+    input[type="text"], input[type="password"], input[type="number"] { background: #111827; border: 1px solid #334155; color: #e2e8f0; padding: 6px 8px; border-radius: 4px; min-width: 120px; }
+    input[type="range"] { vertical-align: middle; }
+    .hint { font-size: 12px; color: #94a3b8; margin: 4px 0 0; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <h1>Акваріумний світильник (ESP-IDF)</h1>
   <p id="wsstat" class="bad">WebSocket: не підключено</p>
+
   <div class="row">
     <button type="button" id="btnState">Оновити стан</button>
+    <button type="button" id="btnLoadSettings">Завантажити налаштування</button>
+    <button type="button" id="btnSaveDevice">Зберегти параметри пристрою</button>
     <button type="button" id="btnGuests">Показ гостям (100%)</button>
     <button type="button" id="btnEnd">Стоп сцени → авто</button>
   </div>
-  <div class="row">
-    <label>Режим</label>
-    <select id="opMode">
-      <option value="auto_24h">Авто 24 год</option>
-      <option value="manual">Ручний</option>
-    </select>
-  </div>
-  <div class="row">
-    <label>Програма</label>
-    <select id="program">
-      <option value="plants_pro">Рослини PRO</option>
-      <option value="grow_only">Лише ріст</option>
-      <option value="view_only">Лише перегляд</option>
-      <option value="fluval_classic">Fluval класика</option>
-      <option value="bright_day">Яскравий день</option>
-    </select>
-  </div>
-  <div class="row">
-    <label>Помпа</label>
-    <button type="button" id="btnPumpOn">Увімкнути</button>
-    <button type="button" id="btnPumpOff">Вимкнути</button>
-  </div>
-  <div class="row">
-    <label>R/G/B/W/Яскр.</label>
-    <input id="mr" type="range" min="0" max="100" value="100" />
-    <input id="mg" type="range" min="0" max="100" value="100" />
-    <input id="mb" type="range" min="0" max="100" value="100" />
-    <input id="mw" type="range" min="0" max="100" value="100" />
-    <input id="mbr" type="range" min="0" max="100" value="100" />
-    <button type="button" id="btnApplyManual">Застосувати ручний</button>
-  </div>
+
+  <fieldset>
+    <legend>Режим і програма</legend>
+    <div class="row">
+      <label for="opMode">Режим роботи</label>
+      <select id="opMode">
+        <option value="auto_24h">Авто 24 год</option>
+        <option value="manual">Ручний</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="program">Програма світла</label>
+      <select id="program">
+        <option value="plants_pro">Рослини PRO</option>
+        <option value="grow_only">Лише ріст</option>
+        <option value="view_only">Лише перегляд</option>
+        <option value="fluval_classic">Fluval класика</option>
+        <option value="bright_day">Яскравий день</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="sceneMode">Сцена (scene_mode)</label>
+      <select id="sceneMode">
+        <option value="0">0 — AUTO</option>
+        <option value="1">1 — MANUAL</option>
+        <option value="2">2 — STORM</option>
+        <option value="3">3 — FEED</option>
+        <option value="4">4 — MOON_TEMP</option>
+        <option value="5">5 — DEMO</option>
+        <option value="6">6 — SHOW_GUESTS</option>
+      </select>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Розклад (години доби, десяткові)</legend>
+    <div class="grid2">
+      <div class="row"><label>hour_start</label><input type="number" id="hourStart" step="0.25" min="0" max="24" /></div>
+      <div class="row"><label>hour_end</label><input type="number" id="hourEnd" step="0.25" min="0" max="24" /></div>
+      <div class="row"><label>hour_moon_end</label><input type="number" id="hourMoonEnd" step="0.25" min="0" max="24" /></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Яскравість (%)</legend>
+    <div class="grid2">
+      <div class="row"><label>max_brightness_pct</label><input type="number" id="maxBrightness" step="1" min="0" max="200" /></div>
+      <div class="row"><label>brightness_trim_pct</label><input type="number" id="brightnessTrim" step="1" min="0" max="200" /></div>
+      <div class="row"><label>moon_brightness_pct</label><input type="number" id="moonBrightness" step="1" min="0" max="200" /></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Помпа та прапорці</legend>
+    <div class="row">
+      <label><input type="checkbox" id="pumpOn" /> pump_on</label>
+      <label><input type="checkbox" id="acclimation" /> acclimation</label>
+      <label><input type="checkbox" id="thermalThrottle" /> thermal_throttle (примусово)</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Ручний RGBW (0–100%, зберігається в NVS)</legend>
+    <div class="row"><label>R</label><input id="mr" type="range" min="0" max="100" value="100" /></div>
+    <div class="row"><label>G</label><input id="mg" type="range" min="0" max="100" value="100" /></div>
+    <div class="row"><label>B</label><input id="mb" type="range" min="0" max="100" value="100" /></div>
+    <div class="row"><label>W</label><input id="mw" type="range" min="0" max="100" value="100" /></div>
+    <div class="row"><label>Яскравість</label><input id="mbr" type="range" min="0" max="100" value="100" /></div>
+    <div class="row">
+      <button type="button" id="btnApplyManual">Лише застосувати ручний RGBW (як раніше)</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>MQTT (брокер і топіки)</legend>
+    <p class="hint">Підписка: <code>{topic_prefix}/cmd</code> — той самий JSON, що й WebSocket (<code>type: "cmd"</code>). Відповідь: <code>…/reply</code>. Стан: <code>…/state</code> (кожні ~4 с). LWT: <code>…/status</code> (retain online/offline).</p>
+    <div class="row"><label><input type="checkbox" id="mqttEnabled" /> Увімкнути MQTT</label></div>
+    <div class="row"><label>broker_host</label><input type="text" id="mqttHost" placeholder="192.168.1.10" autocomplete="off" /></div>
+    <div class="row"><label>port</label><input type="number" id="mqttPort" min="1" max="65534" value="1883" /></div>
+    <div class="row"><label>username</label><input type="text" id="mqttUser" autocomplete="off" /></div>
+    <div class="row"><label>password</label><input type="password" id="mqttPass" placeholder="залиште порожнім — не змінювати" autocomplete="off" /></div>
+    <div class="row"><label><input type="checkbox" id="mqttClearPass" /> Видалити збережений пароль</label></div>
+    <div class="row"><label>client_id</label><input type="text" id="mqttClientId" placeholder="порожньо = MAC" autocomplete="off" /></div>
+    <div class="row"><label>topic_prefix</label><input type="text" id="mqttPrefix" placeholder="aquarium" autocomplete="off" /></div>
+    <div class="row"><span id="mqttConn" class="bad">MQTT: не відомо</span></div>
+    <div class="row">
+      <button type="button" id="btnSaveMqtt">Зберегти MQTT і перепідключити</button>
+    </div>
+  </fieldset>
+
   <h2>Оновлення прошивки (OTA)</h2>
   <p class="row">Поточна версія (зі стану): <code id="fwver">—</code> · слот: <code id="otaslot">—</code></p>
   <p class="row">Оберіть файл <code>build/aquarium-che.bin</code> після <code>idf.py build</code> на тому ж <code>esp32c6</code>, що й пристрій.</p>
@@ -72,6 +142,7 @@
     const fwver = document.getElementById('fwver');
     const otaslot = document.getElementById('otaslot');
     const otastat = document.getElementById('otastat');
+    const mqttConn = document.getElementById('mqttConn');
     function log(line) { logEl.textContent = line + '\n' + logEl.textContent; }
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -82,10 +153,79 @@
       ws.send(JSON.stringify(obj));
     }
 
+    function applySettingsToForm(d) {
+      if (!d) return;
+      if (d.operation_mode) document.getElementById('opMode').value = d.operation_mode;
+      if (d.light_program) document.getElementById('program').value = d.light_program;
+      if (d.scene_mode != null) document.getElementById('sceneMode').value = String(d.scene_mode);
+      if (d.hour_start != null) document.getElementById('hourStart').value = d.hour_start;
+      if (d.hour_end != null) document.getElementById('hourEnd').value = d.hour_end;
+      if (d.hour_moon_end != null) document.getElementById('hourMoonEnd').value = d.hour_moon_end;
+      if (d.max_brightness_pct != null) document.getElementById('maxBrightness').value = d.max_brightness_pct;
+      if (d.brightness_trim_pct != null) document.getElementById('brightnessTrim').value = d.brightness_trim_pct;
+      if (d.moon_brightness_pct != null) document.getElementById('moonBrightness').value = d.moon_brightness_pct;
+      document.getElementById('pumpOn').checked = !!d.pump_on;
+      document.getElementById('acclimation').checked = !!d.acclimation;
+      document.getElementById('thermalThrottle').checked = !!d.thermal_throttle;
+      if (d.manual) {
+        const m = d.manual;
+        document.getElementById('mr').value = Math.round((m.r != null ? m.r : 1) * 100);
+        document.getElementById('mg').value = Math.round((m.g != null ? m.g : 1) * 100);
+        document.getElementById('mb').value = Math.round((m.b != null ? m.b : 1) * 100);
+        document.getElementById('mw').value = Math.round((m.w != null ? m.w : 1) * 100);
+        document.getElementById('mbr').value = Math.round((m.brightness != null ? m.brightness : 1) * 100);
+      }
+      if (d.mqtt) {
+        const q = d.mqtt;
+        document.getElementById('mqttEnabled').checked = !!q.enabled;
+        document.getElementById('mqttHost').value = q.broker_host || '';
+        document.getElementById('mqttPort').value = q.port != null ? q.port : 1883;
+        document.getElementById('mqttUser').value = q.username || '';
+        document.getElementById('mqttPass').value = '';
+        document.getElementById('mqttClearPass').checked = false;
+        document.getElementById('mqttClientId').value = q.client_id || '';
+        document.getElementById('mqttPrefix').value = q.topic_prefix || 'aquarium';
+        mqttConn.textContent = 'MQTT: ' + (q.connected ? 'підключено' : 'не підключено');
+        mqttConn.className = q.connected ? 'ok' : 'bad';
+      }
+    }
+
+    function collectDeviceSettingsData() {
+      const r = document.getElementById('mr').value / 100;
+      const g = document.getElementById('mg').value / 100;
+      const b = document.getElementById('mb').value / 100;
+      const w = document.getElementById('mw').value / 100;
+      const br = document.getElementById('mbr').value / 100;
+      return {
+        operation_mode: document.getElementById('opMode').value,
+        light_program: document.getElementById('program').value,
+        scene_mode: parseInt(document.getElementById('sceneMode').value, 10),
+        hour_start: parseFloat(document.getElementById('hourStart').value),
+        hour_end: parseFloat(document.getElementById('hourEnd').value),
+        hour_moon_end: parseFloat(document.getElementById('hourMoonEnd').value),
+        max_brightness_pct: parseFloat(document.getElementById('maxBrightness').value),
+        brightness_trim_pct: parseFloat(document.getElementById('brightnessTrim').value),
+        moon_brightness_pct: parseFloat(document.getElementById('moonBrightness').value),
+        pump_on: document.getElementById('pumpOn').checked,
+        acclimation: document.getElementById('acclimation').checked,
+        thermal_throttle: document.getElementById('thermalThrottle').checked,
+        manual: { r, g, b, w, brightness: br }
+      };
+    }
+
     function connect() {
       ws = new WebSocket(wsUrl);
-      ws.onopen = () => { wsstat.textContent = 'WebSocket: підключено'; wsstat.className = 'ok'; send({type:'cmd', name:'get_state'}); };
-      ws.onclose = () => { wsstat.textContent = 'WebSocket: розірвано — перепідключення…'; wsstat.className = 'bad'; setTimeout(connect, 2000); };
+      ws.onopen = () => {
+        wsstat.textContent = 'WebSocket: підключено';
+        wsstat.className = 'ok';
+        send({ type: 'cmd', name: 'get_state' });
+        send({ type: 'cmd', name: 'get_settings' });
+      };
+      ws.onclose = () => {
+        wsstat.textContent = 'WebSocket: розірвано — перепідключення…';
+        wsstat.className = 'bad';
+        setTimeout(connect, 2000);
+      };
       ws.onerror = () => log('WS помилка');
       ws.onmessage = (ev) => {
         try {
@@ -94,6 +234,9 @@
             if (j.data.fw_version != null) fwver.textContent = j.data.fw_version;
             if (j.data.ota_partition != null) otaslot.textContent = j.data.ota_partition;
             log(JSON.stringify(j.data, null, 2));
+          } else if (j.type === 'settings' && j.data) {
+            applySettingsToForm(j.data);
+            log('settings: ' + JSON.stringify(j.data, null, 2));
           } else {
             log(ev.data);
           }
@@ -102,13 +245,46 @@
     }
     connect();
 
-    document.getElementById('btnState').onclick = () => send({type:'cmd', name:'get_state'});
-    document.getElementById('btnGuests').onclick = () => send({type:'cmd', name:'scene_show_guests'});
-    document.getElementById('btnEnd').onclick = () => send({type:'cmd', name:'scene_end_special'});
-    document.getElementById('opMode').onchange = (e) => send({type:'cmd', name:'set_operation_mode', value: e.target.value});
-    document.getElementById('program').onchange = (e) => send({type:'cmd', name:'set_light_program', value: e.target.value});
-    document.getElementById('btnPumpOn').onclick = () => send({type:'cmd', name:'set_pump', on: true});
-    document.getElementById('btnPumpOff').onclick = () => send({type:'cmd', name:'set_pump', on: false});
+    document.getElementById('btnState').onclick = () => send({ type: 'cmd', name: 'get_state' });
+    document.getElementById('btnLoadSettings').onclick = () => send({ type: 'cmd', name: 'get_settings' });
+    document.getElementById('btnSaveDevice').onclick = () => {
+      send({ type: 'cmd', name: 'set_settings', data: collectDeviceSettingsData() });
+    };
+    document.getElementById('btnGuests').onclick = () => send({ type: 'cmd', name: 'scene_show_guests' });
+    document.getElementById('btnEnd').onclick = () => send({ type: 'cmd', name: 'scene_end_special' });
+    document.getElementById('opMode').onchange = (e) => send({ type: 'cmd', name: 'set_operation_mode', value: e.target.value });
+    document.getElementById('program').onchange = (e) => send({ type: 'cmd', name: 'set_light_program', value: e.target.value });
+
+    document.getElementById('btnApplyManual').onclick = () => {
+      const r = document.getElementById('mr').value / 100;
+      const g = document.getElementById('mg').value / 100;
+      const b = document.getElementById('mb').value / 100;
+      const w = document.getElementById('mw').value / 100;
+      const br = document.getElementById('mbr').value / 100;
+      send({ type: 'cmd', name: 'set_manual_rgbw', r, g, b, w, brightness: br });
+    };
+
+    document.getElementById('btnSaveMqtt').onclick = () => {
+      const o = {
+        type: 'cmd',
+        name: 'set_mqtt_config',
+        enabled: document.getElementById('mqttEnabled').checked,
+        broker_host: document.getElementById('mqttHost').value.trim(),
+        port: parseInt(document.getElementById('mqttPort').value, 10) || 1883,
+        username: document.getElementById('mqttUser').value,
+        client_id: document.getElementById('mqttClientId').value.trim(),
+        topic_prefix: document.getElementById('mqttPrefix').value.trim() || 'aquarium'
+      };
+      if (document.getElementById('mqttClearPass').checked) {
+        o.clear_mqtt_password = true;
+      } else {
+        const pw = document.getElementById('mqttPass').value;
+        if (pw.length > 0) o.password = pw;
+      }
+      send(o);
+      setTimeout(() => send({ type: 'cmd', name: 'get_settings' }), 800);
+    };
+
     document.getElementById('btnOta').onclick = async () => {
       const f = document.getElementById('fwfile').files[0];
       if (!f) {
@@ -136,15 +312,6 @@
         otastat.textContent = 'Мережа: ' + e + ' (часто так буває після успішного OTA — зачекайте й оновіть сторінку)';
         otastat.className = 'row bad';
       }
-    };
-
-    document.getElementById('btnApplyManual').onclick = () => {
-      const r = document.getElementById('mr').value / 100;
-      const g = document.getElementById('mg').value / 100;
-      const b = document.getElementById('mb').value / 100;
-      const w = document.getElementById('mw').value / 100;
-      const br = document.getElementById('mbr').value / 100;
-      send({type:'cmd', name:'set_manual_rgbw', r, g, b, w, brightness: br});
     };
   </script>
 </body>
