@@ -42,6 +42,17 @@
 | `set_flags` | `acclimation`, `thermal_throttle` | Додаткові множники / обмеження |
 | `scene_show_guests` | — | Повна яскравість демо |
 | `scene_end_special` | — | Повернення в авто |
+| `get_settings` | — | Усі параметри пристрою + блок `mqtt` (без пароля) |
+| `set_settings` | `data`: об'єкт полів | Часткове оновлення NVS (режим, розклад, яскравості, manual, прапорці) |
+| `set_mqtt_config` | `enabled`, `broker_host`, `port`, `username`, `password` (опційно), `clear_mqtt_password`, `client_id`, `topic_prefix` | Зберегти MQTT у NVS і перепідключити |
+
+### MQTT
+
+- Конфігурація: окремий NVS blob `mqtt_cfg` (`MqttNvsConfig`).
+- Підписка: `{topic_prefix}/cmd` — той самий JSON, що й WebSocket (`type: "cmd"`).
+- Відповідь на команду: `{topic_prefix}/reply` (QoS 1).
+- Періодичний стан: `{topic_prefix}/state` (~4 с), формат `type: "state"`.
+- LWT: `{topic_prefix}/status` → `offline` / при підключенні `online` (retain).
 
 Розширення протоколу: додавати нові `name` без зміни URL; версія API — поле `api` у привітальному `hello` після підключення.
 
