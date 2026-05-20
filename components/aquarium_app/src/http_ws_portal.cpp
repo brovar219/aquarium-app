@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 
+#include "api_dispatch.hpp"
 #include "device_service.hpp"
 #include "firmware_http_update.hpp"
 #include "esp_http_server.h"
@@ -92,8 +93,8 @@ static esp_err_t ws_handler(httpd_req_t* req) {
     return ESP_FAIL;
   }
 
-  const std::string reply =
-      ws_pkt.len ? svc->handle_ws_json(reinterpret_cast<char*>(buf)) : svc->handle_ws_json(R"({"type":"cmd","name":"get_state"})");
+  const std::string reply = ws_pkt.len ? aq::dispatch_ipc_json(reinterpret_cast<char*>(buf), svc)
+                                     : aq::dispatch_ipc_json(R"({"type":"cmd","name":"get_state"})", svc);
 
   free(buf);
 
