@@ -4,6 +4,7 @@
 #include <string>
 
 #include "device_service.hpp"
+#include "firmware_http_update.hpp"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "json_state.hpp"
@@ -119,10 +120,11 @@ esp_err_t HttpWsPortal::start(httpd_handle_t* out_server, DeviceService* svc) {
   s_ws_fd_ = -1;
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   cfg.stack_size = 8192;
-  cfg.max_uri_handlers = 8;
+  cfg.max_uri_handlers = 10;
   cfg.lru_purge_enable = true;
-  cfg.recv_wait_timeout = 10;
-  cfg.send_wait_timeout = 10;
+  // Довший таймаут для прийому тіла POST /update (OTA), байти можуть йти повільно.
+  cfg.recv_wait_timeout = 120;
+  cfg.send_wait_timeout = 30;
   if (httpd_start(out_server, &cfg) != ESP_OK) {
     ESP_LOGE(TAG, "httpd_start");
     return ESP_FAIL;
@@ -138,7 +140,8 @@ esp_err_t HttpWsPortal::start(httpd_handle_t* out_server, DeviceService* svc) {
 
   ESP_ERROR_CHECK(httpd_register_uri_handler(*out_server, &u_root));
   ESP_ERROR_CHECK(httpd_register_uri_handler(*out_server, &u_ws));
-  ESP_LOGI(TAG, "HTTP :80, WS /ws");
+  ESP_ERROR_CHECK(register_firmware_update_uri(*out_server));
+  ESP_LOGI(TAG, "HTTP :80, WS /ws, POST /update (OTA)");
   return ESP_OK;
 }
 
