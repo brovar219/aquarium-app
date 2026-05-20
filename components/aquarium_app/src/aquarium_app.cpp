@@ -3,6 +3,7 @@
 #include "device_service.hpp"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "firmware_http_update.hpp"
 #include "esp_netif.h"
 #include "esp_sntp.h"
 #include "esp_time_source.hpp"
@@ -24,6 +25,7 @@ namespace aquarium_app {
 
 void start() {
   ESP_ERROR_CHECK(nvs_flash_init());
+  aq::ota_mark_app_valid_if_needed();
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
