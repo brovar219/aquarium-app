@@ -8,6 +8,7 @@
 #include "esp_sntp.h"
 #include "esp_time_source.hpp"
 #include "http_ws_portal.hpp"
+#include "mqtt_client_hub.hpp"
 #include "nvs_flash.h"
 #include "nvs_store.hpp"
 #include "pump_gpio.hpp"
@@ -44,9 +45,13 @@ void start() {
   static aq::EspTimeSource time_source;
   static aq::DeviceService device(leds, pump, temp_sensor, store, time_source, schedule);
 
+  aq::MqttClientHub::init(&device);
+
   httpd_handle_t server = nullptr;
   ESP_ERROR_CHECK(aq::HttpWsPortal::start(&server, &device));
   ESP_LOGI(TAG, "Сервіс запущено. Відкрийте http://<IP>/");
+
+  aq::MqttClientHub::start_from_nvs();
 
   xTaskCreate(
       [](void* arg) {
@@ -54,6 +59,7 @@ void start() {
         for (;;) {
           vTaskDelay(pdMS_TO_TICKS(500));
           svc->tick();
+          aq::MqttClientHub::on_device_tick();
           aq::HttpWsPortal::queue_state_broadcast();
         }
       },

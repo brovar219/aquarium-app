@@ -12,6 +12,9 @@ idf_component_register(
         "src/http_ws_portal.cpp"
         "src/firmware_http_update.cpp"
         "src/aquarium_app.cpp"
+        "src/mqtt_nvs.cpp"
+        "src/mqtt_client_hub.cpp"
+        "src/api_dispatch.cpp"
     INCLUDE_DIRS "include"
     EMBED_FILES "web/index.html"
-    REQUIRES driver esp_http_server esp_wifi esp_netif esp_event nvs_flash esp_timer json app_update esp_partition)
+    REQUIRES driver esp_http_server esp_wifi esp_netif esp_event nvs_flash esp_timer json app_update esp_partition mqtt)
