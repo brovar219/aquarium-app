@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Акваріум — панель</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; background: #0b1220; color: #e8eefc; }
+    h1 { font-size: 1.2rem; }
+    #log { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; background: #111827; padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
+    button, select { margin: 4px 4px 4px 0; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; cursor: pointer; }
+    button:hover { background: #334155; }
+    .row { margin: 8px 0; }
+    label { display: inline-block; min-width: 140px; }
+    .ok { color: #4ade80; }
+    .bad { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>Акваріумний світильник (ESP-IDF)</h1>
+  <p id="wsstat" class="bad">WebSocket: не підключено</p>
+  <div class="row">
+    <button type="button" id="btnState">Оновити стан</button>
+    <button type="button" id="btnGuests">Показ гостям (100%)</button>
+    <button type="button" id="btnEnd">Стоп сцени → авто</button>
+  </div>
+  <div class="row">
+    <label>Режим</label>
+    <select id="opMode">
+      <option value="auto_24h">Авто 24 год</option>
+      <option value="manual">Ручний</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Програма</label>
+    <select id="program">
+      <option value="plants_pro">Рослини PRO</option>
+      <option value="grow_only">Лише ріст</option>
+      <option value="view_only">Лише перегляд</option>
+      <option value="fluval_classic">Fluval класика</option>
+      <option value="bright_day">Яскравий день</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Помпа</label>
+    <button type="button" id="btnPumpOn">Увімкнути</button>
+    <button type="button" id="btnPumpOff">Вимкнути</button>
+  </div>
+  <div class="row">
+    <label>R/G/B/W/Яскр.</label>
+    <input id="mr" type="range" min="0" max="100" value="100" />
+    <input id="mg" type="range" min="0" max="100" value="100" />
+    <input id="mb" type="range" min="0" max="100" value="100" />
+    <input id="mw" type="range" min="0" max="100" value="100" />
+    <input id="mbr" type="range" min="0" max="100" value="100" />
+    <button type="button" id="btnApplyManual">Застосувати ручний</button>
+  </div>
+  <h2>Стан (JSON)</h2>
+  <div id="log"></div>
+  <script>
+    const logEl = document.getElementById('log');
+    const wsstat = document.getElementById('wsstat');
+    function log(line) { logEl.textContent = line + '\n' + logEl.textContent; }
+
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = proto + '//' + location.host + '/ws';
+    let ws;
+    function send(obj) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify(obj));
+    }
+
+    function connect() {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => { wsstat.textContent = 'WebSocket: підключено'; wsstat.className = 'ok'; send({type:'cmd', name:'get_state'}); };
+      ws.onclose = () => { wsstat.textContent = 'WebSocket: розірвано — перепідключення…'; wsstat.className = 'bad'; setTimeout(connect, 2000); };
+      ws.onerror = () => log('WS помилка');
+      ws.onmessage = (ev) => {
+        try {
+          const j = JSON.parse(ev.data);
+          if (j.type === 'state') {
+            log(JSON.stringify(j.data, null, 2));
+          } else {
+            log(ev.data);
+          }
+        } catch (e) { log(ev.data); }
+      };
+    }
+    connect();
+
+    document.getElementById('btnState').onclick = () => send({type:'cmd', name:'get_state'});
+    document.getElementById('btnGuests').onclick = () => send({type:'cmd', name:'scene_show_guests'});
+    document.getElementById('btnEnd').onclick = () => send({type:'cmd', name:'scene_end_special'});
+    document.getElementById('opMode').onchange = (e) => send({type:'cmd', name:'set_operation_mode', value: e.target.value});
+    document.getElementById('program').onchange = (e) => send({type:'cmd', name:'set_light_program', value: e.target.value});
+    document.getElementById('btnPumpOn').onclick = () => send({type:'cmd', name:'set_pump', on: true});
+    document.getElementById('btnPumpOff').onclick = () => send({type:'cmd', name:'set_pump', on: false});
+    document.getElementById('btnApplyManual').onclick = () => {
+      const r = document.getElementById('mr').value / 100;
+      const g = document.getElementById('mg').value / 100;
+      const b = document.getElementById('mb').value / 100;
+      const w = document.getElementById('mw').value / 100;
+      const br = document.getElementById('mbr').value / 100;
+      send({type:'cmd', name:'set_manual_rgbw', r, g, b, w, brightness: br});
+    };
+  </script>
+</body>
+</html>

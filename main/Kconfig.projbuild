@@ -1,0 +1,15 @@
+menu "Aquarium Wi-Fi"
+
+    config AQUARIUM_WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            SSID точки доступу для режиму STA.
+
+    config AQUARIUM_WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            Пароль Wi-Fi (зберігається у образі — для виробництва використовуйте NVS або provisioning).
+
+endmenu
