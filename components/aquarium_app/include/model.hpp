@@ -36,7 +36,7 @@ struct RgbwTarget {
 
 struct PersistedSettings {
   uint32_t magic{0xA01A01U};
-  uint16_t version{2};
+  uint16_t version{3};
 
   OperationMode operation_mode{OperationMode::AUTO_24H};
   LightProgram light_program{LightProgram::PLANTS_PRO};
@@ -51,6 +51,13 @@ struct PersistedSettings {
 
   bool acclimation{false};
   bool pump_on{true};
+
+  /** Ручний RGBW (0..1) + яскравість; зберігається в NVS. */
+  float manual_r{1.F};
+  float manual_g{1.F};
+  float manual_b{1.F};
+  float manual_w{1.F};
+  float manual_brightness{1.F};
 };
 
 struct DeviceState {
