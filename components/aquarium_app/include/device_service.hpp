@@ -31,6 +31,10 @@ class DeviceService {
   void apply_auto_light_locked();
   void apply_manual_light_locked();
   void apply_show_guests_locked();
+  void apply_manual_moon_locked();
+  void apply_lightning_locked();
+  void refresh_live_state_locked(bool read_sensor);
+  uint32_t next_lightning_rand_locked(uint32_t min_value, uint32_t max_value);
   void persist_if_dirty();
 
   ILightOutput& light_;
@@ -45,6 +49,14 @@ class DeviceService {
   DeviceState state_;
 
   bool dirty_settings_{false};
+  bool guest_scene_active_{false};
+  bool moon_scene_active_{false};
+  int64_t lightning_until_ms_{0};
+  int64_t feed_until_ms_{0};
+  int64_t lightning_next_step_ms_{0};
+  int lightning_flashes_left_{0};
+  bool lightning_flash_on_{false};
+  uint32_t lightning_rng_{0xA5C31F27U};
 };
 
 }  // namespace aq

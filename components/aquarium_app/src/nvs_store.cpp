@@ -13,21 +13,29 @@ static constexpr const char* kKey = "cfg";
 namespace aq {
 
 bool NvsSettingsStore::load(PersistedSettings& out) {
+  out = PersistedSettings{};
   nvs_handle_t h;
   esp_err_t err = nvs_open(kNs, NVS_READONLY, &h);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "немає збережених налаштувань (%s)", esp_err_to_name(err));
     return false;
   }
-  size_t sz = sizeof(out);
-  err = nvs_get_blob(h, kKey, &out, &sz);
+  uint8_t buf[sizeof(PersistedSettings)]{};
+  size_t sz = sizeof(buf);
+  err = nvs_get_blob(h, kKey, buf, &sz);
   nvs_close(h);
-  if (err != ESP_OK || sz != sizeof(out)) {
-    ESP_LOGW(TAG, "get_blob fail");
+  if (err != ESP_OK || sz < 16) {
+    ESP_LOGW(TAG, "get_blob fail (%s, sz=%u)", esp_err_to_name(err), static_cast<unsigned>(sz));
     return false;
   }
+  memcpy(&out, buf, sz < sizeof(buf) ? sz : sizeof(buf));
   if (out.magic != 0xA01A01U) {
     return false;
+  }
+  if (sz < sizeof(PersistedSettings)) {
+    ESP_LOGI(TAG, "міграція NVS cfg: старий розмір %u → %u", static_cast<unsigned>(sz),
+             static_cast<unsigned>(sizeof(PersistedSettings)));
+    out.version = 4;
   }
   return true;
 }

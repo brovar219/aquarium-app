@@ -3,12 +3,17 @@
 #include "api_dispatch.hpp"
 #include "device_service.hpp"
 #include "json_state.hpp"
+#include "mqtt_ha_bridge.hpp"
 #include "mqtt_nvs.hpp"
 
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <string>
+
 #include "esp_event.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -33,13 +38,22 @@ char s_state_topic[128]{};
 char s_reply_topic[128]{};
 char s_lwt_topic[128]{};
 
-void rebuild_topics() {
-  s_cmd_topic[0] = s_state_topic[0] = s_reply_topic[0] = s_lwt_topic[0] = '\0';
-  const char* p = s_cfg.topic_prefix[0] ? s_cfg.topic_prefix : "aquarium";
-  snprintf(s_cmd_topic, sizeof(s_cmd_topic), "%s/cmd", p);
-  snprintf(s_state_topic, sizeof(s_state_topic), "%s/state", p);
-  snprintf(s_reply_topic, sizeof(s_reply_topic), "%s/reply", p);
-  snprintf(s_lwt_topic, sizeof(s_lwt_topic), "%s/status", p);
+SemaphoreHandle_t s_cmd_mutex{nullptr};
+std::deque<std::string> s_cmd_queue;
+constexpr size_t kMaxCmdQueue = 8;
+
+void enqueue_mqtt_cmd(std::string payload) {
+  if (s_cmd_mutex == nullptr) {
+    return;
+  }
+  if (xSemaphoreTake(s_cmd_mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+    return;
+  }
+  if (s_cmd_queue.size() >= kMaxCmdQueue) {
+    s_cmd_queue.pop_front();
+  }
+  s_cmd_queue.push_back(std::move(payload));
+  xSemaphoreGive(s_cmd_mutex);
 }
 
 void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data) {
@@ -52,7 +66,7 @@ void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event
     case MQTT_EVENT_CONNECTED: {
       s_mqtt_connected = true;
       ESP_LOGI(TAG, "MQTT connected");
-      rebuild_topics();
+      MqttClientHub::rebuild_topics();
       if (s_cmd_topic[0]) {
         const int mid = esp_mqtt_client_subscribe(client, s_cmd_topic, 1);
         ESP_LOGI(TAG, "subscribe %s mid=%d", s_cmd_topic, mid);
@@ -61,12 +75,22 @@ void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event
         const char online[] = "online";
         esp_mqtt_client_publish(client, s_lwt_topic, online, static_cast<int>(strlen(online)), 1, 1);
       }
+      MqttHaBridge::on_mqtt_connected(client, s_cfg.topic_prefix[0] ? s_cfg.topic_prefix : "aquarium");
       break;
     }
     case MQTT_EVENT_DISCONNECTED:
       s_mqtt_connected = false;
       ESP_LOGW(TAG, "MQTT disconnected");
       break;
+    case MQTT_EVENT_ERROR: {
+      auto* err_ev = static_cast<esp_mqtt_event_t*>(event_data);
+      if (err_ev != nullptr && err_ev->error_handle != nullptr) {
+        ESP_LOGE(TAG, "MQTT error type=%d", err_ev->error_handle->error_type);
+      } else {
+        ESP_LOGE(TAG, "MQTT error");
+      }
+      break;
+    }
     case MQTT_EVENT_DATA: {
       if (s_dev == nullptr || ev->topic_len <= 0 || ev->data_len <= 0) {
         break;
@@ -79,18 +103,21 @@ void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event
       memcpy(topic, ev->topic, tl);
       topic[tl] = '\0';
 
-      rebuild_topics();
-      if (strcmp(topic, s_cmd_topic) != 0) {
-        break;
-      }
+      MqttClientHub::rebuild_topics();
 
       std::string payload(static_cast<size_t>(ev->data_len), '\0');
       memcpy(payload.data(), ev->data, static_cast<size_t>(ev->data_len));
 
-      const std::string reply = dispatch_ipc_json(payload.c_str(), s_dev);
-      if (s_reply_topic[0] && !reply.empty()) {
-        esp_mqtt_client_publish(client, s_reply_topic, reply.data(), reply.size(), 1, 0);
+      if (MqttHaBridge::on_mqtt_data(client, topic, payload.c_str(), ev->data_len, s_dev)) {
+        break;
       }
+
+      if (strcmp(topic, s_cmd_topic) != 0) {
+        ESP_LOGD(TAG, "MQTT ignore topic %s", topic);
+        break;
+      }
+
+      enqueue_mqtt_cmd(std::move(payload));
       break;
     }
     default:
@@ -111,18 +138,50 @@ bool build_uri_from_cfg() {
 
 }  // namespace
 
+void MqttClientHub::rebuild_topics() {
+  s_cmd_topic[0] = s_state_topic[0] = s_reply_topic[0] = s_lwt_topic[0] = '\0';
+  const char* p = s_cfg.topic_prefix[0] ? s_cfg.topic_prefix : "aquarium";
+  snprintf(s_cmd_topic, sizeof(s_cmd_topic), "%s/cmd", p);
+  snprintf(s_state_topic, sizeof(s_state_topic), "%s/state", p);
+  snprintf(s_reply_topic, sizeof(s_reply_topic), "%s/reply", p);
+  snprintf(s_lwt_topic, sizeof(s_lwt_topic), "%s/status", p);
+}
+
 void MqttClientHub::init(DeviceService* dev) {
   s_dev = dev;
+  if (s_cmd_mutex == nullptr) {
+    s_cmd_mutex = xSemaphoreCreateMutex();
+  }
+}
+
+void MqttClientHub::drain_command_queue() {
+  if (s_dev == nullptr || s_mqtt == nullptr || s_cmd_mutex == nullptr) {
+    return;
+  }
+  for (;;) {
+    std::string payload;
+    if (xSemaphoreTake(s_cmd_mutex, 0) != pdTRUE) {
+      break;
+    }
+    if (s_cmd_queue.empty()) {
+      xSemaphoreGive(s_cmd_mutex);
+      break;
+    }
+    payload = std::move(s_cmd_queue.front());
+    s_cmd_queue.pop_front();
+    xSemaphoreGive(s_cmd_mutex);
+
+    const std::string reply = dispatch_ipc_json(payload.c_str(), s_dev);
+    if (s_mqtt_connected && s_reply_topic[0] && !reply.empty()) {
+      esp_mqtt_client_publish(s_mqtt, s_reply_topic, reply.data(), static_cast<int>(reply.size()), 1, 0);
+    }
+  }
 }
 
 void MqttClientHub::start_from_nvs() {
   stop();
   if (!mqtt_nvs_load(s_cfg)) {
-    memset(&s_cfg, 0, sizeof(s_cfg));
-    s_cfg.magic = 0x4D545451U;
-    s_cfg.version = 1;
-    s_cfg.port = 1883;
-    strncpy(s_cfg.topic_prefix, "aquarium", sizeof(s_cfg.topic_prefix) - 1);
+    s_cfg = MqttNvsConfig{};  // Структура з NSDMI у заголовку дає коректні дефолти.
   }
   if (!s_cfg.enabled || !build_uri_from_cfg()) {
     ESP_LOGI(TAG, "MQTT вимкнено або broker не заданий");
@@ -133,6 +192,11 @@ void MqttClientHub::start_from_nvs() {
 
   esp_mqtt_client_config_t mqtt_cfg{};
   mqtt_cfg.broker.address.uri = s_uri;
+  mqtt_cfg.network.disable_auto_reconnect = false;
+  mqtt_cfg.network.reconnect_timeout_ms = 8000;
+  mqtt_cfg.session.keepalive = 60;
+  mqtt_cfg.buffer.size = 4096;
+  mqtt_cfg.buffer.out_size = 2048;
   if (s_cfg.username[0]) {
     mqtt_cfg.credentials.username = s_cfg.username;
   }
@@ -211,6 +275,7 @@ void MqttClientHub::on_device_tick() {
   }
   esp_mqtt_client_publish(s_mqtt, s_state_topic, js, static_cast<int>(strlen(js)), 0, 0);
   free(js);
+  MqttHaBridge::on_device_tick(s_mqtt, s_dev);
   s_last_state_publish_us = now;
 }
 

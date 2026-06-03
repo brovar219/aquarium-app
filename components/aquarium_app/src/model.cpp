@@ -4,24 +4,29 @@
 
 namespace aq {
 
-static const char* kPrograms[] = {"plants_pro", "grow_only", "view_only", "fluval_classic",
-                                  "bright_day"};
+// Index = numeric value of LightProgram enum.
+// Values 1 & 2 (old GROW_ONLY / VIEW_ONLY) map to "plants_pro" for API.
+static const char* kPrograms[] = {
+    "plants_pro",    // 0
+    "plants_pro",    // 1 (legacy GROW_ONLY)
+    "plants_pro",    // 2 (legacy VIEW_ONLY)
+    "fluval_classic",// 3
+    "bright_day",    // 4
+    "custom",        // 5
+};
+static constexpr int kNumPrograms = 6;
 
 std::string light_program_to_api(LightProgram p) {
   const int i = static_cast<int>(p);
-  if (i >= 0 && i < 5) {
-    return kPrograms[i];
-  }
+  if (i >= 0 && i < kNumPrograms) return kPrograms[i];
   return "plants_pro";
 }
 
 bool light_program_from_api(const char* s, LightProgram& out) {
-  for (int i = 0; i < 5; ++i) {
-    if (strcmp(s, kPrograms[i]) == 0) {
-      out = static_cast<LightProgram>(i);
-      return true;
-    }
-  }
+  if (strcmp(s, "plants_pro") == 0)     { out = LightProgram::PLANTS_PRO;     return true; }
+  if (strcmp(s, "fluval_classic") == 0) { out = LightProgram::FLUVAL_CLASSIC; return true; }
+  if (strcmp(s, "bright_day") == 0)     { out = LightProgram::BRIGHT_DAY;     return true; }
+  if (strcmp(s, "custom") == 0)         { out = LightProgram::CUSTOM;         return true; }
   return false;
 }
 
@@ -30,14 +35,8 @@ std::string operation_mode_to_api(OperationMode m) {
 }
 
 bool operation_mode_from_api(const char* s, OperationMode& out) {
-  if (strcmp(s, "manual") == 0) {
-    out = OperationMode::MANUAL;
-    return true;
-  }
-  if (strcmp(s, "auto_24h") == 0) {
-    out = OperationMode::AUTO_24H;
-    return true;
-  }
+  if (strcmp(s, "manual") == 0)   { out = OperationMode::MANUAL;   return true; }
+  if (strcmp(s, "auto_24h") == 0) { out = OperationMode::AUTO_24H; return true; }
   return false;
 }
 

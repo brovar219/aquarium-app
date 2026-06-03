@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <string>
+#include "cJSON.h"
 #include "device_service.hpp"
 #include "mqtt_client_hub.hpp"
 #include "mqtt_nvs.hpp"
@@ -90,11 +91,7 @@ static void copy_json_str(char* dest, size_t dest_sz, cJSON* item) {
 static std::string handle_set_mqtt_config(cJSON* root) {
   MqttNvsConfig cfg{};
   if (!mqtt_nvs_load(cfg)) {
-    memset(&cfg, 0, sizeof(cfg));
-    cfg.magic = 0x4D545451U;
-    cfg.version = 1;
-    cfg.port = 1883;
-    strncpy(cfg.topic_prefix, "aquarium", sizeof(cfg.topic_prefix) - 1);
+    cfg = MqttNvsConfig{};  // Дефолти беруться з NSDMI у заголовку.
   }
 
   cJSON* it = cJSON_GetObjectItemCaseSensitive(root, "enabled");
@@ -195,3 +192,5 @@ std::string dispatch_ipc_json(const char* json, DeviceService* dev) {
   cJSON_Delete(root);
   return dev->handle_ws_json(json);
 }
+
+}  // namespace aq

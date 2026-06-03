@@ -14,7 +14,7 @@
 #include "pump_gpio.hpp"
 #include "rgbw_ledc.hpp"
 #include "schedule_engine.hpp"
-#include "temperature_null.hpp"
+#include "temperature_ds18b20.hpp"
 #include "wifi_station.hpp"
 
 #include "freertos/FreeRTOS.h"
@@ -35,14 +35,19 @@ void start() {
 
   esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
   esp_sntp_setservername(0, "pool.ntp.org");
-  esp_sntp_init();
 
   static aq::NvsSettingsStore store;
+  aq::PersistedSettings boot_settings{};
+  if (!store.load(boot_settings)) {
+    boot_settings = aq::PersistedSettings{};
+  }
   static aq::RgbwLedc leds;
   static aq::PumpGpio pump;
-  static aq::NullTemperatureSensor temp_sensor;
+  static aq::Ds18b20TemperatureSensor temp_sensor;
   static aq::ScheduleEngine schedule;
   static aq::EspTimeSource time_source;
+  time_source.set_timezone(boot_settings.timezone_posix);
+  esp_sntp_init();
   static aq::DeviceService device(leds, pump, temp_sensor, store, time_source, schedule);
 
   aq::MqttClientHub::init(&device);
@@ -56,11 +61,16 @@ void start() {
   xTaskCreate(
       [](void* arg) {
         auto* svc = static_cast<aq::DeviceService*>(arg);
+        unsigned tick_n = 0;
         for (;;) {
-          vTaskDelay(pdMS_TO_TICKS(500));
+          vTaskDelay(pdMS_TO_TICKS(100));
           svc->tick();
-          aq::MqttClientHub::on_device_tick();
-          aq::HttpWsPortal::queue_state_broadcast();
+          aq::MqttClientHub::drain_command_queue();
+          // MQTT/WS достатньо оновлювати раз на ~1 с, а сам світ рахуємо частіше для швидкої реакції.
+          if ((++tick_n % 10) == 0) {
+            aq::MqttClientHub::on_device_tick();
+            aq::HttpWsPortal::queue_state_broadcast();
+          }
         }
       },
       "aq_tick", 8192, &device, 5, nullptr);

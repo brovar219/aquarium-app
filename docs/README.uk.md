@@ -15,20 +15,35 @@
 | Синій LEDC     | 3               |
 | Білий LEDC     | 6               |
 | Помпа (акт. низ.) | 7            |
-| 1-Wire (темп.) | 0 (драйвер у майбутній версії) |
+| 1-Wire (темп.) | 0 (DS18B20, реальний драйвер) |
 
 Якщо ваша плата відрізняється — змініть піни в `rgbw_ledc.cpp` та `pump_gpio.hpp`.
 
 ## Збірка та прошивка
 
-1. Встановіть ESP-IDF згідно з офіційною інструкцією Espressif.
+Покроковий «бойовий» рецепт із розборами проблем і командами для Windows/PowerShell — [BUILD_FLASH.uk.md](BUILD_FLASH.uk.md). Коротко:
+
+1. Встановіть ESP-IDF (перевірено на **v5.5.4**) і активуйте оточення (`export.ps1` для PowerShell або `export.sh` для bash).
 2. У каталозі проєкту:
    - `idf.py set-target esp32c6`
-   - `idf.py menuconfig` → меню **Aquarium Wi-Fi** — задайте `SSID` і пароль.
+   - `idf.py menuconfig` → меню **Aquarium Wi-Fi** — задайте `SSID` і пароль (або задайте їх у `sdkconfig.defaults`).
 3. `idf.py build`
-4. `idf.py -p /dev/ttyUSB0 flash monitor` (порт підставте свій).
+4. `idf.py -p COM11 erase-flash` (перший раз із новою розміткою) → `idf.py -p COM11 flash monitor`.
+   Для Linux підставте свій порт, наприклад `/dev/ttyACM0` (USB-Serial/JTAG на ESP32-C6) або `/dev/ttyUSB0`.
 
 Перший запуск: після підключення до Wi-Fi пристрій запитує час через **SNTP** (`pool.ntp.org`). Доки час не синхронізовано, у режимі «Авто» світло залишатиметься вимкненим (фаза «Очікування SNTP»).
+
+### Як знайти IP в консолі
+
+Після `wifi_init_sta` логер `wifi_sta` друкує три виразні рядки:
+
+```
+I (4721) wifi_sta: З'єднано з AP "Home" (канал 11)
+I (5753) wifi_sta: Wi-Fi GOT IP=192.168.89.6 mask=255.255.255.0 gw=192.168.89.1
+I (5757) wifi_sta: Веб-панель: http://192.168.89.6/  (WS: ws://192.168.89.6/ws, OTA: POST http://192.168.89.6/update)
+```
+
+Якщо потрібно автоматично «вийняти» IP без `idf.py monitor` — див. готовий PowerShell-скрипт у [BUILD_FLASH.uk.md](BUILD_FLASH.uk.md#5-моніторинг-і-пошук-ip-у-консолі).
 
 ## Веб-інтерфейс
 
@@ -36,9 +51,21 @@
 - **WebSocket** `GET /ws` — усі команди та пуш стану у форматі JSON.
 - **OTA** `POST /update` — тіло запиту = сирий бінарник прошивки (`Content-Type: application/octet-stream`), наприклад файл `build/aquarium-che.bin` після збірки для того ж `esp32c6`. На веб-сторінці є форма завантаження. Після успішного запису пристрій перезавантажується з нового слота OTA.
 
-Таблиця розділів за замовчуванням — **два великі слоти OTA** (`sdkconfig.defaults`). Якщо раніше використовувався один великий `factory` app, перший перехід на OTA потребує повної прошивки через UART (за потреби `idf.py erase-flash`), інакше розмітка флеш не збігатиметься.
+Таблиця розділів за замовчуванням — **два великі слоти OTA** (`TWO_OTA_LARGE`) на 4 МБ флеш. У `sdkconfig.defaults` зафіксовано `CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y` — без цього розмітка не збиралась. Якщо раніше використовувалась інша розмітка, перший перехід на OTA потребує повної прошивки через UART (за потреби `idf.py -p COM11 erase-flash`), інакше розмітка флеш не збігатиметься.
 
 У JSON стану додано поля `fw_version`, `fw_idf`, `ota_partition` для контролю версії та активного слота. **Будь-хто в локальній мережі може надіслати POST /update** — тримайте Wi-Fi в довіреній зоні або додайте власну автентифікацію за потреби.
+
+### Покроково: перевірити OTA локально
+
+1. У кореневому `CMakeLists.txt` підніміть `set(PROJECT_VER "1.0.1")` → `idf.py build`.
+2. З пристрою у тій самій L2-мережі, що й ESP32, виконайте (приклад для Windows PowerShell):
+   ```powershell
+   curl.exe -X POST -H "Content-Type: application/octet-stream" `
+     --data-binary "@C:\Users\igor\Documents\projects\aquarium-app\build\aquarium-che.bin" `
+     http://192.168.89.6/update
+   ```
+   Очікувана відповідь: `OK rebooting`. Через ~0.5 с пристрій ребутне.
+3. У моніторі побачите рядок `ota_http: Нова прошивка підтверджена (rollback скасовано)` — другий запуск визнано вдалим. У WS-стані `data.fw_version` стане `1.0.1`, а `data.ota_partition` зміниться з `ota_0` на `ota_1` (або навпаки).
 
 Після відкриття сторінки браузер створює одне з’єднання WebSocket. Оновлення стану надходить автоматично кожні ~0,5 с з прошивки (якщо WS активний), плюс відповіді на ваші команди.
 
@@ -60,10 +87,32 @@
 {"type":"cmd","name":"set_operation_mode","value":"manual"}
 ```
 
-Програма доби (`plants_pro`, `grow_only`, `view_only`, `fluval_classic`, `bright_day`):
+Програма доби (`plants_pro`, `fluval_classic`, `bright_day`, `custom`):
 
 ```json
 {"type":"cmd","name":"set_light_program","value":"plants_pro"}
+```
+
+> Застарілі значення `grow_only`/`view_only` (числа 1/2) приймаються для сумісності зі старим NVS і мапляться на `plants_pro`.
+
+Фази для програми `custom` (RGBW кожної фази у діапазоні 0…1) задаються через імпорт налаштувань `set_settings` — поле `custom_phases` з об'єктами `dawn`/`day`/`moon`:
+
+```json
+{"type":"cmd","name":"set_settings","data":{
+  "custom_phases":{
+    "dawn":{"r":0.6,"g":0.2,"b":0.1,"w":0.1},
+    "day":{"r":1,"g":0.9,"b":0.8,"w":1},
+    "moon":{"r":0,"g":0,"b":0.3,"w":0}}}}
+```
+
+Пресети ручного кольору P1–P4 зберігаються в NVS на пристрої (`index` 0…3):
+
+```json
+{"type":"cmd","name":"save_preset","index":0,"r":1,"g":0.8,"b":0.6,"w":0.9,"brightness":0.7}
+```
+
+```json
+{"type":"cmd","name":"load_preset","index":0}
 ```
 
 Помпа:
@@ -112,10 +161,12 @@
 
 ## Відмінності від ESPHome
 
-- Немає інтеграції Home Assistant «з коробки» (немає нативного API ESPHome).
-- Ефекти «гроза», «демо», «кормлення» з YAML поки не перенесені — їх можна додати окремими класами сцен без зміни протоколу WS.
-- Датчик DS18B20: інтерфейс `ITemperatureSensor` готовий; поточна реалізація — заглушка.
+- Немає нативного API ESPHome, але є **MQTT-міст з авто-дискаверингом Home Assistant** (`mqtt_ha_bridge`): пристрій публікує конфіги light/sensor/switch, тож з'являється в HA автоматично за наявності брокера.
+- Ефекти «гроза» (storm), «гості» (guests), «місяць» (moon) перенесені як сцени; «кормлення» вимикає помпу. Додаткові ефекти додаються окремими класами сцен без зміни протоколу WS.
+- Датчик DS18B20: **реальний драйвер** (1-Wire через RMT, 12-біт). Читання винесене у фонову FreeRTOS-задачу кожні 5 с, щоб не блокувати WS під час ~750 мс конверсії.
 
 ## Підтримка
 
-Перевірте журнал UART (`idf.py monitor`): теги `wifi_sta`, `http_ws`, `device`, `rgbw`.
+Перевірте журнал UART (`idf.py monitor`): теги `wifi_sta`, `http_ws`, `device`, `rgbw`, `ota_http`, `mqtt_hub`, `mqtt_ha`, `temp_ds18b20`, `api_dispatch`.
+
+Готові one-liner-и, типові помилки збірки/прошивки і робочий сценарій OTA фіксуються в [BUILD_FLASH.uk.md](BUILD_FLASH.uk.md) — оновлюйте цей файл щоразу, коли натрапляєте на нову пастку.

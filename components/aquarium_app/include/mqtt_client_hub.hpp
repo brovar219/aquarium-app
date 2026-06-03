@@ -15,9 +15,10 @@ class MqttClientHub {
   static void stop();
 
   static bool is_connected();
+  /** Викликати з tick-задачі — обробка черги MQTT-команд і публікація стану. */
   static void on_device_tick();
+  static void drain_command_queue();
 
- private:
   static void rebuild_topics();
 };
 

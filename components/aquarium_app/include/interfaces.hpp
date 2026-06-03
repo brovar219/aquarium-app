@@ -44,6 +44,7 @@ class ITimeSource {
   virtual ~ITimeSource() = default;
   virtual bool local_time(int& hour, int& minute, int& second) const = 0;
   virtual bool is_valid() const = 0;
+  virtual bool set_timezone(const char* tz_value) = 0;
 };
 
 /** Обчислення цільового кольору для авто-режиму. */

@@ -2,317 +2,946 @@
 <html lang="uk">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Акваріум — панель</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Aquarium Connect</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 1rem; background: #0b1220; color: #e8eefc; max-width: 960px; }
-    h1 { font-size: 1.2rem; }
-    h2 { font-size: 1rem; margin-top: 1.25rem; border-bottom: 1px solid #334155; padding-bottom: 4px; }
-    #log { font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; background: #111827; padding: 8px; border-radius: 6px; max-height: 180px; overflow: auto; }
-    button, select { margin: 4px 4px 4px 0; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; cursor: pointer; }
-    button:hover { background: #334155; }
-    .row { margin: 8px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-    label { min-width: 160px; }
-    .ok { color: #4ade80; }
-    .bad { color: #f87171; }
-    fieldset { border: 1px solid #334155; border-radius: 8px; margin: 10px 0; padding: 10px; }
-    legend { padding: 0 6px; color: #94a3b8; }
-    input[type="text"], input[type="password"], input[type="number"] { background: #111827; border: 1px solid #334155; color: #e2e8f0; padding: 6px 8px; border-radius: 4px; min-width: 120px; }
-    input[type="range"] { vertical-align: middle; }
-    .hint { font-size: 12px; color: #94a3b8; margin: 4px 0 0; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+    :root {
+      --bg: #062a33; --panel: #0c3d4a; --accent: #00b4d8; --accent-dim: #087a94;
+      --text: #e8f4f8; --muted: #8eb8c4; --danger: #f87171; --ok: #4ade80; --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif;
+           background: linear-gradient(180deg,#041f26 0%,var(--bg) 40%);
+           color: var(--text); min-height: 100vh; padding-bottom: 74px; }
+    .header { padding: 12px 16px 8px; background: var(--panel); border-bottom: 1px solid #134956; }
+    .header h1 { margin: 0; font-size: 1.1rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .phase { color: var(--accent); font-weight: 600; }
+    .pill { padding: 2px 8px; border-radius: 999px; background: #134956; font-size: .75rem; }
+    .pill.ok { color: var(--ok); } .pill.bad { color: var(--danger); } .pill.warn { color: var(--warn); }
+    main { padding: 12px 16px; }
+    .panel { display: none; } .panel.active { display: block; }
+    .card { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid #134956; }
+    .card h3 { margin: 0 0 10px; font-size: .92rem; font-weight: 600; color: var(--muted); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .gridStats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat { background: #062a33; border: 1px solid #1a5563; border-radius: 10px; padding: 10px; }
+    .stat .label { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
+    .stat .value { font-size: 1rem; font-weight: 600; }
+    .field label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: 4px; }
+    .field input, .field select { width: 100%; padding: 8px; border-radius: 8px;
+      border: 1px solid #1a5563; background: #062a33; color: var(--text); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .btn { padding: 10px 14px; border-radius: 8px; border: none; background: var(--accent);
+           color: #042a33; font-weight: 700; cursor: pointer; font-size: .88rem; }
+    .btn.secondary { background: #134956; color: var(--text); border: 1px solid var(--accent-dim); }
+    .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--accent-dim); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px;
+             padding: 5px 10px; background: #134956; color: var(--text); font-size: .8rem; font-weight: 600; }
+    .badge.manual { color: var(--warn); } .badge.auto { color: var(--ok); } .badge.special { color: var(--accent); }
+    /* power button */
+    .power-row { display: flex; justify-content: center; margin: 8px 0 16px; }
+    .btn-power { width: 64px; height: 64px; border-radius: 50%; border: 3px solid var(--accent);
+                 background: #134956; color: var(--accent); font-size: 1.5rem; cursor: pointer; }
+    .btn-power.on { background: var(--accent); color: #042a33; box-shadow: 0 0 24px rgba(0,180,216,.35); }
+    /* brightness slider */
+    .brightness-ring { display: flex; flex-direction: column; align-items: center; margin: 12px 0 16px; }
+    .brightness-ring input[type=range] { width: min(280px,90vw); accent-color: var(--accent); }
+    .brightness-val { font-size: 2rem; color: var(--accent); margin-bottom: 8px; }
+    #chLabel { font-size: .85rem; color: var(--muted); }
+    /* color channel dots */
+    .dots { display: flex; justify-content: center; gap: 16px; margin: 12px 0; }
+    .dot { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+    .dot.active { border-color: #fff; transform: scale(1.08); }
+    .dot.all { background: conic-gradient(#ff6b6b 0 25%,#51cf66 25% 50%,#4dabf7 50% 75%,#f8f9fa 75% 100%); }
+    .dot.r { background: #ff6b6b; } .dot.g { background: #51cf66; }
+    .dot.b { background: #4dabf7; } .dot.w { background: #f8f9fa; border-color: #555; }
+    .channel-sliders { max-width: 400px; margin: 0 auto; }
+    .ch-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+    .ch-row label { width: 28px; font-weight: 600; }
+    .ch-row input { flex: 1; accent-color: var(--accent); }
+    /* presets */
+    .presets { display: flex; justify-content: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    .preset { min-width: 52px; padding: 10px 14px; border-radius: 8px;
+              border: 2px solid var(--accent-dim); background: #134956; color: var(--text); cursor: pointer; font-weight: 600; }
+    .preset.saved { border-color: var(--ok); color: var(--ok); }
+    /* timeline */
+    .timeline-wrap { background: #134956; border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+    canvas.tl { width: 100%; height: 120px; display: block; border-radius: 8px; background: #062a33; }
+    .timeline-caption { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+                        font-size: .74rem; color: var(--muted); }
+    .mini-badge { padding: 4px 8px; border-radius: 999px; background: #062a33; border: 1px solid #1a5563; }
+    /* programs */
+    .programs { display: flex; flex-wrap: wrap; gap: 8px; }
+    .prog-btn { padding: 8px 12px; border-radius: 20px; border: 1px solid var(--accent-dim);
+                background: #134956; color: var(--text); cursor: pointer; font-size: .85rem; }
+    .prog-btn.active { background: var(--accent); color: #042a33; }
+    /* phase editor */
+    #phaseEditor { margin-top: 12px; }
+    .phase-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .ptab { padding: 6px 12px; border-radius: 16px; border: 1px solid var(--accent-dim);
+            background: #134956; color: var(--text); cursor: pointer; font-size: .8rem; }
+    .ptab.active { background: var(--accent); color: #042a33; }
+    .color-preview { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #1a5563;
+                     display: inline-block; vertical-align: middle; margin-right: 8px; flex-shrink: 0; }
+    /* schedule grid */
+    .sched-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    /* log */
+    #log { font-family: ui-monospace,monospace; font-size: 10px; max-height: 120px;
+           overflow: auto; color: var(--muted); white-space: pre-wrap; }
+    .hint { font-size: .75rem; color: var(--muted); line-height: 1.4; }
+    /* nav */
+    .nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex;
+           background: #0c3d4a; border-top: 1px solid #134956;
+           padding: 6px 0 calc(6px + env(safe-area-inset-bottom)); }
+    .nav button { flex: 1; background: none; border: none; color: var(--muted);
+                  padding: 8px 4px; font-size: .7rem; cursor: pointer; }
+    .nav button.active { color: var(--accent); }
+    .nav button span { display: block; font-size: 1.2rem; margin-bottom: 2px; }
+    @media (max-width: 600px) { .grid2,.gridStats,.sched-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <h1>Акваріумний світильник (ESP-IDF)</h1>
-  <p id="wsstat" class="bad">WebSocket: не підключено</p>
-
-  <div class="row">
-    <button type="button" id="btnState">Оновити стан</button>
-    <button type="button" id="btnLoadSettings">Завантажити налаштування</button>
-    <button type="button" id="btnSaveDevice">Зберегти параметри пристрою</button>
-    <button type="button" id="btnGuests">Показ гостям (100%)</button>
-    <button type="button" id="btnEnd">Стоп сцени → авто</button>
+<header class="header">
+  <h1>Aquarium Connect</h1>
+  <div class="meta">
+    <span class="phase" id="phaseLabel">—</span>
+    <span class="pill" id="modePill">Режим: —</span>
+    <span class="pill" id="tempLabel">🌡 —</span>
+    <span class="pill" id="timeLabel">--:--</span>
+    <span class="pill" id="wsPill">WS …</span>
+    <span class="pill" id="mqttPill">MQTT …</span>
   </div>
+</header>
 
-  <fieldset>
-    <legend>Режим і програма</legend>
-    <div class="row">
-      <label for="opMode">Режим роботи</label>
-      <select id="opMode">
-        <option value="auto_24h">Авто 24 год</option>
-        <option value="manual">Ручний</option>
-      </select>
+<main>
+  <!-- ══════════ STATUS ══════════ -->
+  <section id="panelStatus" class="panel active">
+    <div class="card">
+      <h3>Поточний стан</h3>
+      <div class="gridStats">
+        <div class="stat"><div class="label">Режим</div><div class="value"><span id="statusModeBadge" class="badge">—</span></div></div>
+        <div class="stat"><div class="label">Яскравість</div><div class="value"><span id="statusBrightness">0%</span></div></div>
+        <div class="stat"><div class="label">Програма</div><div class="value" id="statusProgram">—</div></div>
+        <div class="stat"><div class="label">Помпа</div><div class="value" id="statusPump">—</div></div>
+        <div class="stat"><div class="label">Температура</div><div class="value" id="statusTempValue">—</div></div>
+        <div class="stat"><div class="label">Час пристрою</div><div class="value" id="statusClock">--:--:--</div></div>
+        <div class="stat"><div class="label">Wi‑Fi RSSI</div><div class="value" id="statusWifi">—</div></div>
+        <div class="stat"><div class="label">Uptime</div><div class="value" id="statusUptime">—</div></div>
+      </div>
     </div>
-    <div class="row">
-      <label for="program">Програма світла</label>
-      <select id="program">
-        <option value="plants_pro">Рослини PRO</option>
-        <option value="grow_only">Лише ріст</option>
-        <option value="view_only">Лише перегляд</option>
-        <option value="fluval_classic">Fluval класика</option>
-        <option value="bright_day">Яскравий день</option>
-      </select>
+    <div class="card">
+      <h3>Швидкі дії</h3>
+      <div class="btn-row">
+        <button type="button" class="btn" id="btnRefresh">Оновити</button>
+        <button type="button" class="btn secondary" id="btnActivateAuto">Повернути графік</button>
+        <button type="button" class="btn secondary" id="btnGuests">Гості 100%</button>
+        <button type="button" class="btn secondary" id="btnFeed">Кормлення 15 хв</button>
+        <button type="button" class="btn secondary" id="btnMoon">Нічне світло</button>
+        <button type="button" class="btn secondary" id="btnLightning">Шторм</button>
+        <button type="button" class="btn ghost" id="btnStopSpecial">Стоп спецрежим</button>
+      </div>
     </div>
-    <div class="row">
-      <label for="sceneMode">Сцена (scene_mode)</label>
-      <select id="sceneMode">
-        <option value="0">0 — AUTO</option>
-        <option value="1">1 — MANUAL</option>
-        <option value="2">2 — STORM</option>
-        <option value="3">3 — FEED</option>
-        <option value="4">4 — MOON_TEMP</option>
-        <option value="5">5 — DEMO</option>
-        <option value="6">6 — SHOW_GUESTS</option>
-      </select>
+  </section>
+
+  <!-- ══════════ MANUAL ══════════ -->
+  <section id="panelManual" class="panel">
+    <div class="card">
+      <h3>Ручне керування</h3>
+      <div class="power-row"><button type="button" class="btn-power on" id="btnPower">⏻</button></div>
+      <div class="brightness-ring">
+        <div class="brightness-val"><span id="brightPct">100</span>%</div>
+        <input type="range" id="masterBright" min="0" max="100" value="100" />
+        <span id="chLabel">Усі канали</span>
+      </div>
+      <div class="dots">
+        <button type="button" class="dot all active" data-ch="all"></button>
+        <button type="button" class="dot r" data-ch="r"></button>
+        <button type="button" class="dot g" data-ch="g"></button>
+        <button type="button" class="dot b" data-ch="b"></button>
+        <button type="button" class="dot w" data-ch="w"></button>
+      </div>
+      <div class="channel-sliders">
+        <div class="ch-row" data-ch="r"><label>R</label><input type="range" id="slR" min="0" max="100" value="100" /></div>
+        <div class="ch-row" data-ch="g"><label>G</label><input type="range" id="slG" min="0" max="100" value="100" /></div>
+        <div class="ch-row" data-ch="b"><label>B</label><input type="range" id="slB" min="0" max="100" value="100" /></div>
+        <div class="ch-row" data-ch="w"><label>W</label><input type="range" id="slW" min="0" max="100" value="100" /></div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn" id="btnApplyManual">Застосувати</button>
+        <button type="button" class="btn ghost" id="btnManualAutoBack">Повернути графік</button>
+      </div>
+      <p class="hint" style="text-align:center;margin-top:14px">P1–P4: клік — завантажити · утримати 2 с — зберегти на пристрої</p>
+      <div class="presets" id="presetBtns">
+        <button type="button" class="preset" data-p="0">P1</button>
+        <button type="button" class="preset" data-p="1">P2</button>
+        <button type="button" class="preset" data-p="2">P3</button>
+        <button type="button" class="preset" data-p="3">P4</button>
+      </div>
     </div>
-  </fieldset>
+  </section>
 
-  <fieldset>
-    <legend>Розклад (години доби, десяткові)</legend>
-    <div class="grid2">
-      <div class="row"><label>hour_start</label><input type="number" id="hourStart" step="0.25" min="0" max="24" /></div>
-      <div class="row"><label>hour_end</label><input type="number" id="hourEnd" step="0.25" min="0" max="24" /></div>
-      <div class="row"><label>hour_moon_end</label><input type="number" id="hourMoonEnd" step="0.25" min="0" max="24" /></div>
+  <!-- ══════════ SCHEDULE ══════════ -->
+  <section id="panelSchedule" class="panel">
+    <div class="timeline-wrap">
+      <canvas id="timeline" class="tl"></canvas>
+      <div class="timeline-caption">
+        <span class="mini-badge">Схід: <span id="capStart">09:00</span></span>
+        <span class="mini-badge">Захід: <span id="capEnd">17:00</span></span>
+        <span class="mini-badge">Нічне до: <span id="capMoonEnd">18:00</span></span>
+      </div>
     </div>
-  </fieldset>
 
-  <fieldset>
-    <legend>Яскравість (%)</legend>
-    <div class="grid2">
-      <div class="row"><label>max_brightness_pct</label><input type="number" id="maxBrightness" step="1" min="0" max="200" /></div>
-      <div class="row"><label>brightness_trim_pct</label><input type="number" id="brightnessTrim" step="1" min="0" max="200" /></div>
-      <div class="row"><label>moon_brightness_pct</label><input type="number" id="moonBrightness" step="1" min="0" max="200" /></div>
+    <div class="card">
+      <h3>Програма</h3>
+      <div class="programs" id="progSchedule"></div>
+
+      <!-- Phase editor — visible only for CUSTOM -->
+      <div id="phaseEditor" style="display:none">
+        <div style="display:flex;align-items:center;margin:12px 0 6px">
+          <span id="phasePreview" class="color-preview"></span>
+          <span style="font-size:.8rem;color:var(--muted)">Колір фази</span>
+        </div>
+        <div class="phase-tabs" id="phaseTabs">
+          <button class="ptab active" data-phase="dawn">Схід/Захід</button>
+          <button class="ptab" data-phase="day">День</button>
+          <button class="ptab" data-phase="moon">Нічне</button>
+        </div>
+        <div class="channel-sliders">
+          <div class="ch-row"><label>R</label><input type="range" id="phR" min="0" max="100" value="100" /></div>
+          <div class="ch-row"><label>G</label><input type="range" id="phG" min="0" max="100" value="100" /></div>
+          <div class="ch-row"><label>B</label><input type="range" id="phB" min="0" max="100" value="100" /></div>
+          <div class="ch-row"><label>W</label><input type="range" id="phW" min="0" max="100" value="100" /></div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn secondary" id="btnPreviewPhase">Показати фазу зараз</button>
+        </div>
+      </div>
     </div>
-  </fieldset>
 
-  <fieldset>
-    <legend>Помпа та прапорці</legend>
-    <div class="row">
-      <label><input type="checkbox" id="pumpOn" /> pump_on</label>
-      <label><input type="checkbox" id="acclimation" /> acclimation</label>
-      <label><input type="checkbox" id="thermalThrottle" /> thermal_throttle (примусово)</label>
+    <div class="card">
+      <h3>Розклад</h3>
+      <div class="sched-grid">
+        <div class="field"><label>Початок дня</label><input type="time" id="hourStart" value="09:00" step="300" /></div>
+        <div class="field"><label>Кінець дня</label><input type="time" id="hourEnd" value="17:00" step="300" /></div>
+        <div class="field"><label>Нічне до</label><input type="time" id="hourMoonEnd" value="18:00" step="300" /></div>
+        <div class="field"><label>Денна яскравість, %</label><input type="number" id="maxBrightness" min="10" max="100" value="70" /></div>
+        <div class="field"><label>Нічне світло, %</label><input type="number" id="moonBrightness" min="0" max="8" step="1" value="4" /></div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn" id="btnSaveSchedule">Зберегти</button>
+        <button type="button" class="btn secondary" id="btnPreviewGuests">Гості 100%</button>
+      </div>
     </div>
-  </fieldset>
+  </section>
 
-  <fieldset>
-    <legend>Ручний RGBW (0–100%, зберігається в NVS)</legend>
-    <div class="row"><label>R</label><input id="mr" type="range" min="0" max="100" value="100" /></div>
-    <div class="row"><label>G</label><input id="mg" type="range" min="0" max="100" value="100" /></div>
-    <div class="row"><label>B</label><input id="mb" type="range" min="0" max="100" value="100" /></div>
-    <div class="row"><label>W</label><input id="mw" type="range" min="0" max="100" value="100" /></div>
-    <div class="row"><label>Яскравість</label><input id="mbr" type="range" min="0" max="100" value="100" /></div>
-    <div class="row">
-      <button type="button" id="btnApplyManual">Лише застосувати ручний RGBW (як раніше)</button>
+  <!-- ══════════ SETTINGS ══════════ -->
+  <section id="panelSettings" class="panel">
+    <div class="card">
+      <h3>Час та країна</h3>
+      <div class="grid2">
+        <div class="field"><label>Країна / часовий пояс</label><select id="timezoneCountry"></select></div>
+        <div class="field"><label>Час на пристрої</label><input type="text" id="timezoneNow" value="--:--:--" readonly /></div>
+      </div>
+      <p class="hint" id="timezoneHint"></p>
+      <div class="btn-row"><button type="button" class="btn secondary" id="btnSaveClock">Зберегти</button></div>
     </div>
-  </fieldset>
 
-  <fieldset>
-    <legend>MQTT (брокер і топіки)</legend>
-    <p class="hint">Підписка: <code>{topic_prefix}/cmd</code> — той самий JSON, що й WebSocket (<code>type: "cmd"</code>). Відповідь: <code>…/reply</code>. Стан: <code>…/state</code> (кожні ~4 с). LWT: <code>…/status</code> (retain online/offline).</p>
-    <div class="row"><label><input type="checkbox" id="mqttEnabled" /> Увімкнути MQTT</label></div>
-    <div class="row"><label>broker_host</label><input type="text" id="mqttHost" placeholder="192.168.1.10" autocomplete="off" /></div>
-    <div class="row"><label>port</label><input type="number" id="mqttPort" min="1" max="65534" value="1883" /></div>
-    <div class="row"><label>username</label><input type="text" id="mqttUser" autocomplete="off" /></div>
-    <div class="row"><label>password</label><input type="password" id="mqttPass" placeholder="залиште порожнім — не змінювати" autocomplete="off" /></div>
-    <div class="row"><label><input type="checkbox" id="mqttClearPass" /> Видалити збережений пароль</label></div>
-    <div class="row"><label>client_id</label><input type="text" id="mqttClientId" placeholder="порожньо = MAC" autocomplete="off" /></div>
-    <div class="row"><label>topic_prefix</label><input type="text" id="mqttPrefix" placeholder="aquarium" autocomplete="off" /></div>
-    <div class="row"><span id="mqttConn" class="bad">MQTT: не відомо</span></div>
-    <div class="row">
-      <button type="button" id="btnSaveMqtt">Зберегти MQTT і перепідключити</button>
+    <div class="card">
+      <h3>MQTT</h3>
+      <label><input type="checkbox" id="mqttEnabled" /> Увімкнути MQTT</label>
+      <div class="grid2" style="margin-top:10px">
+        <div class="field"><label>Брокер IP</label><input type="text" id="mqttHost" placeholder="192.168.1.10" /></div>
+        <div class="field"><label>Порт</label><input type="number" id="mqttPort" value="1883" /></div>
+        <div class="field"><label>Користувач</label><input type="text" id="mqttUser" /></div>
+        <div class="field"><label>Пароль</label><input type="password" id="mqttPass" placeholder="порожньо = не змінювати" /></div>
+        <div class="field"><label>topic_prefix</label><input type="text" id="mqttPrefix" value="aquarium" /></div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn" id="btnLoadSettings">Оновити</button>
+        <button type="button" class="btn secondary" id="btnSaveMqtt">Зберегти MQTT</button>
+      </div>
     </div>
-  </fieldset>
 
-  <h2>Оновлення прошивки (OTA)</h2>
-  <p class="row">Поточна версія (зі стану): <code id="fwver">—</code> · слот: <code id="otaslot">—</code></p>
-  <p class="row">Оберіть файл <code>build/aquarium-che.bin</code> після <code>idf.py build</code> на тому ж <code>esp32c6</code>, що й пристрій.</p>
-  <div class="row">
-    <input type="file" id="fwfile" accept=".bin,application/octet-stream" />
-    <button type="button" id="btnOta">Завантажити та перезавантажити</button>
-  </div>
-  <p id="otastat" class="row"></p>
+    <div class="card">
+      <h3>Помпа</h3>
+      <label><input type="checkbox" id="pumpOn" checked /> Увімкнена</label>
+    </div>
 
-  <h2>Стан (JSON)</h2>
-  <div id="log"></div>
-  <script>
-    const logEl = document.getElementById('log');
-    const wsstat = document.getElementById('wsstat');
-    const fwver = document.getElementById('fwver');
-    const otaslot = document.getElementById('otaslot');
-    const otastat = document.getElementById('otastat');
-    const mqttConn = document.getElementById('mqttConn');
-    function log(line) { logEl.textContent = line + '\n' + logEl.textContent; }
+    <details class="card">
+      <summary>Калібрування / сервіс</summary>
+      <div class="grid2" style="margin-top:10px">
+        <div class="field"><label>Trim яскравості LED, %</label><input type="number" id="brightnessTrim" min="50" max="120" value="100" /></div>
+      </div>
+    </details>
 
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = proto + '//' + location.host + '/ws';
-    let ws;
-    function send(obj) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify(obj));
-    }
+    <div class="card">
+      <h3>OTA оновлення</h3>
+      <p class="hint">v <span id="fwver">—</span> · <span id="otaslot">—</span></p>
+      <input type="file" id="fwfile" accept=".bin" />
+      <div class="btn-row"><button type="button" class="btn ghost" id="btnOta">Завантажити прошивку</button></div>
+      <p id="otastat" class="hint"></p>
+    </div>
 
-    function applySettingsToForm(d) {
-      if (!d) return;
-      if (d.operation_mode) document.getElementById('opMode').value = d.operation_mode;
-      if (d.light_program) document.getElementById('program').value = d.light_program;
-      if (d.scene_mode != null) document.getElementById('sceneMode').value = String(d.scene_mode);
-      if (d.hour_start != null) document.getElementById('hourStart').value = d.hour_start;
-      if (d.hour_end != null) document.getElementById('hourEnd').value = d.hour_end;
-      if (d.hour_moon_end != null) document.getElementById('hourMoonEnd').value = d.hour_moon_end;
-      if (d.max_brightness_pct != null) document.getElementById('maxBrightness').value = d.max_brightness_pct;
-      if (d.brightness_trim_pct != null) document.getElementById('brightnessTrim').value = d.brightness_trim_pct;
-      if (d.moon_brightness_pct != null) document.getElementById('moonBrightness').value = d.moon_brightness_pct;
-      document.getElementById('pumpOn').checked = !!d.pump_on;
-      document.getElementById('acclimation').checked = !!d.acclimation;
-      document.getElementById('thermalThrottle').checked = !!d.thermal_throttle;
-      if (d.manual) {
-        const m = d.manual;
-        document.getElementById('mr').value = Math.round((m.r != null ? m.r : 1) * 100);
-        document.getElementById('mg').value = Math.round((m.g != null ? m.g : 1) * 100);
-        document.getElementById('mb').value = Math.round((m.b != null ? m.b : 1) * 100);
-        document.getElementById('mw').value = Math.round((m.w != null ? m.w : 1) * 100);
-        document.getElementById('mbr').value = Math.round((m.brightness != null ? m.brightness : 1) * 100);
-      }
-      if (d.mqtt) {
-        const q = d.mqtt;
-        document.getElementById('mqttEnabled').checked = !!q.enabled;
-        document.getElementById('mqttHost').value = q.broker_host || '';
-        document.getElementById('mqttPort').value = q.port != null ? q.port : 1883;
-        document.getElementById('mqttUser').value = q.username || '';
-        document.getElementById('mqttPass').value = '';
-        document.getElementById('mqttClearPass').checked = false;
-        document.getElementById('mqttClientId').value = q.client_id || '';
-        document.getElementById('mqttPrefix').value = q.topic_prefix || 'aquarium';
-        mqttConn.textContent = 'MQTT: ' + (q.connected ? 'підключено' : 'не підключено');
-        mqttConn.className = q.connected ? 'ok' : 'bad';
-      }
-    }
+    <details class="card"><summary>Журнал</summary><div id="log"></div></details>
+  </section>
+</main>
 
-    function collectDeviceSettingsData() {
-      const r = document.getElementById('mr').value / 100;
-      const g = document.getElementById('mg').value / 100;
-      const b = document.getElementById('mb').value / 100;
-      const w = document.getElementById('mw').value / 100;
-      const br = document.getElementById('mbr').value / 100;
-      return {
-        operation_mode: document.getElementById('opMode').value,
-        light_program: document.getElementById('program').value,
-        scene_mode: parseInt(document.getElementById('sceneMode').value, 10),
-        hour_start: parseFloat(document.getElementById('hourStart').value),
-        hour_end: parseFloat(document.getElementById('hourEnd').value),
-        hour_moon_end: parseFloat(document.getElementById('hourMoonEnd').value),
-        max_brightness_pct: parseFloat(document.getElementById('maxBrightness').value),
-        brightness_trim_pct: parseFloat(document.getElementById('brightnessTrim').value),
-        moon_brightness_pct: parseFloat(document.getElementById('moonBrightness').value),
-        pump_on: document.getElementById('pumpOn').checked,
-        acclimation: document.getElementById('acclimation').checked,
-        thermal_throttle: document.getElementById('thermalThrottle').checked,
-        manual: { r, g, b, w, brightness: br }
-      };
-    }
+<nav class="nav" id="mainNav">
+  <button type="button" class="active" data-tab="status"><span>◉</span>Статус</button>
+  <button type="button" data-tab="manual"><span>◎</span>Ручний</button>
+  <button type="button" data-tab="schedule"><span>◐</span>Графік</button>
+  <button type="button" data-tab="settings"><span>⚙</span>Налаш.</button>
+</nav>
 
-    function connect() {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        wsstat.textContent = 'WebSocket: підключено';
-        wsstat.className = 'ok';
-        send({ type: 'cmd', name: 'get_state' });
-        send({ type: 'cmd', name: 'get_settings' });
-      };
-      ws.onclose = () => {
-        wsstat.textContent = 'WebSocket: розірвано — перепідключення…';
-        wsstat.className = 'bad';
-        setTimeout(connect, 2000);
-      };
-      ws.onerror = () => log('WS помилка');
-      ws.onmessage = (ev) => {
-        try {
-          const j = JSON.parse(ev.data);
-          if (j.type === 'state' && j.data) {
-            if (j.data.fw_version != null) fwver.textContent = j.data.fw_version;
-            if (j.data.ota_partition != null) otaslot.textContent = j.data.ota_partition;
-            log(JSON.stringify(j.data, null, 2));
-          } else if (j.type === 'settings' && j.data) {
-            applySettingsToForm(j.data);
-            log('settings: ' + JSON.stringify(j.data, null, 2));
-          } else {
-            log(ev.data);
-          }
-        } catch (e) { log(ev.data); }
-      };
-    }
-    connect();
+<script>
+// ══════════════════════════════════════════════════════════════════
+// Constants
+// ══════════════════════════════════════════════════════════════════
+const PROGRAMS = [
+  { id: 'plants_pro',    label: 'Рослини' },
+  { id: 'fluval_classic',label: 'Fluval' },
+  { id: 'bright_day',    label: 'Яскравий' },
+  { id: 'custom',        label: 'Свій ✏️' },
+];
 
-    document.getElementById('btnState').onclick = () => send({ type: 'cmd', name: 'get_state' });
-    document.getElementById('btnLoadSettings').onclick = () => send({ type: 'cmd', name: 'get_settings' });
-    document.getElementById('btnSaveDevice').onclick = () => {
-      send({ type: 'cmd', name: 'set_settings', data: collectDeviceSettingsData() });
+const TIMEZONE_PRESETS = [
+  { id: 'ua', label: 'Україна',           tz: 'EET-2EEST,M3.5.0/3,M10.5.0/4' },
+  { id: 'pl', label: 'Польща',            tz: 'CET-1CEST,M3.5.0/2,M10.5.0/3' },
+  { id: 'de', label: 'Німеччина',         tz: 'CET-1CEST,M3.5.0/2,M10.5.0/3' },
+  { id: 'uk', label: 'Велика Британія',   tz: 'GMT0BST,M3.5.0/1,M10.5.0/2' },
+  { id: 'tr', label: 'Туреччина',         tz: '<+03>-3' },
+  { id: 'us_east', label: 'США (Нью-Йорк)',tz: 'EST5EDT,M3.2.0/2,M11.1.0/2' },
+  { id: 'us_west', label: 'США (Лос-Анджелес)',tz: 'PST8PDT,M3.2.0/2,M11.1.0/2' },
+];
+
+const DEFAULTS = {
+  hour_start: '09:00', hour_end: '17:00', hour_moon_end: '18:00',
+  max_brightness_pct: 70, brightness_trim_pct: 100, moon_brightness_pct: 4,
+};
+
+const CH_NAMES = { all:'Усі канали', r:'Червоний (R)', g:'Зелений (G)', b:'Синій (B)', w:'Білий (W)' };
+const TAB_PANEL = { status:'panelStatus', manual:'panelManual', schedule:'panelSchedule', settings:'panelSettings' };
+
+// ══════════════════════════════════════════════════════════════════
+// State
+// ══════════════════════════════════════════════════════════════════
+let ws = null, wsConnecting = false;
+let lastState = {}, lastSettings = {};
+let currentTab = sessionStorage.getItem('aq_tab') || 'status';
+let activeCh = 'all', activePhase = 'dawn';
+let powerOn = true;
+let uiLockUntil = 0, debounceTimer = null, presetHoldTimer = null, refreshTimer = null;
+
+// custom phases local copy (synced from/to device)
+let customPhases = {
+  dawn: { r:1, g:.42, b:.18, w:.28 },
+  day:  { r:1, g:.92, b:.78, w:1 },
+  moon: { r:.04, g:.08, b:.45, w:.32 },
+};
+
+const $ = id => document.getElementById(id);
+
+// ══════════════════════════════════════════════════════════════════
+// Helpers
+// ══════════════════════════════════════════════════════════════════
+function log(msg) {
+  const el = $('log');
+  if (el) el.textContent = msg + '\n' + (el.textContent || '').slice(0, 1800);
+}
+
+function send(obj) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(obj));
+  return true;
+}
+
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+function numVal(id, fb) { const v = parseFloat($(id).value); return isFinite(v) ? v : fb; }
+
+function hourFloatToTimeString(v) {
+  if (!isFinite(v)) return '00:00';
+  let t = Math.round(v * 60);
+  t = Math.min(24 * 60, Math.max(0, t));
+  if (t === 24 * 60) return '24:00';
+  return String(Math.floor(t/60)).padStart(2,'0') + ':' + String(t%60).padStart(2,'0');
+}
+
+function timeStringToHourFloat(v, fb) {
+  if (typeof v !== 'string' || !/^\d{2}:\d{2}$/.test(v)) return timeStringToHourFloat(fb || '08:00', '08:00');
+  const [hh, mm] = v.split(':').map(x => parseInt(x, 10));
+  if (!isFinite(hh) || !isFinite(mm)) return timeStringToHourFloat(fb || '08:00', '08:00');
+  return Math.min(24, Math.max(0, hh + mm / 60));
+}
+
+function scheduleHours() {
+  return {
+    start:   timeStringToHourFloat($('hourStart').value,   DEFAULTS.hour_start),
+    end:     timeStringToHourFloat($('hourEnd').value,     DEFAULTS.hour_end),
+    moonEnd: timeStringToHourFloat($('hourMoonEnd').value, DEFAULTS.hour_moon_end),
+  };
+}
+
+function refreshSoon(delay = 120) {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    send({ type: 'cmd', name: 'get_state' });
+    if (currentTab === 'settings' || currentTab === 'schedule')
+      send({ type: 'cmd', name: 'get_settings' });
+  }, delay);
+}
+
+function lockUi(ms) { uiLockUntil = Date.now() + ms; }
+function isUiLocked() { return Date.now() < uiLockUntil; }
+
+// ══════════════════════════════════════════════════════════════════
+// Manual RGBW sliders
+// ══════════════════════════════════════════════════════════════════
+function readSliders() {
+  return { r: +$('slR').value, g: +$('slG').value, b: +$('slB').value, w: +$('slW').value, brightness: +$('masterBright').value };
+}
+
+function writeSliders(s, updateMaster = true) {
+  $('slR').value = s.r; $('slG').value = s.g; $('slB').value = s.b; $('slW').value = s.w;
+  if (updateMaster) {
+    const m = activeCh === 'all' ? s.brightness : s[activeCh];
+    $('masterBright').value = m; $('brightPct').textContent = m;
+  }
+  updatePowerUi();
+}
+
+function pctTo01(sl) {
+  return { r: sl.r/100, g: sl.g/100, b: sl.b/100, w: sl.w/100, brightness: sl.brightness/100 };
+}
+
+function updatePowerUi() {
+  const on = powerOn && +$('masterBright').value > 0;
+  $('btnPower').classList.toggle('on', on);
+}
+
+function syncMasterFromActiveCh() {
+  const sl = readSliders();
+  const m = activeCh === 'all' ? sl.brightness : sl[activeCh];
+  $('masterBright').value = m; $('brightPct').textContent = m;
+}
+
+function selectColorChannel(ch) {
+  activeCh = ch;
+  document.querySelectorAll('.dot').forEach(d => d.classList.toggle('active', d.dataset.ch === ch));
+  $('chLabel').textContent = CH_NAMES[ch] || ch;
+  document.querySelectorAll('.ch-row').forEach(row => {
+    row.style.display = (ch === 'all' || row.dataset.ch === ch) ? 'flex' : 'none';
+  });
+  syncMasterFromActiveCh();
+}
+
+function applyManualLive() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const m = pctTo01(readSliders());
+    if (!powerOn) m.brightness = 0;
+    send({ type: 'cmd', name: 'set_manual_rgbw', ...m });
+  }, 100);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Phase editor
+// ══════════════════════════════════════════════════════════════════
+function updatePhasePreview() {
+  const pc = customPhases[activePhase] || customPhases.day;
+  // Mix R+G+B+W into a rough CSS colour for the preview circle
+  const rr = Math.round(Math.min(255, (pc.r * 0.7 + pc.w * 0.3) * 255));
+  const gg = Math.round(Math.min(255, (pc.g * 0.7 + pc.w * 0.3) * 255));
+  const bb = Math.round(Math.min(255, (pc.b * 0.7 + pc.w * 0.2) * 255));
+  $('phasePreview').style.background = `rgb(${rr},${gg},${bb})`;
+}
+
+function loadPhaseToSliders(phase) {
+  const pc = customPhases[phase] || { r:1, g:1, b:1, w:1 };
+  $('phR').value = Math.round(pc.r * 100);
+  $('phG').value = Math.round(pc.g * 100);
+  $('phB').value = Math.round(pc.b * 100);
+  $('phW').value = Math.round(pc.w * 100);
+  updatePhasePreview();
+}
+
+function saveSliderToPhase() {
+  customPhases[activePhase] = {
+    r: +$('phR').value / 100,
+    g: +$('phG').value / 100,
+    b: +$('phB').value / 100,
+    w: +$('phW').value / 100,
+  };
+  updatePhasePreview();
+}
+
+function selectPhase(phase) {
+  activePhase = phase;
+  document.querySelectorAll('.ptab').forEach(b => b.classList.toggle('active', b.dataset.phase === phase));
+  loadPhaseToSliders(phase);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Programs
+// ══════════════════════════════════════════════════════════════════
+function buildProgramButtons(containerId, activeId) {
+  const el = $(containerId);
+  el.innerHTML = '';
+  PROGRAMS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'prog-btn' + (p.id === activeId ? ' active' : '');
+    b.textContent = p.label;
+    b.dataset.id = p.id;
+    b.onclick = () => {
+      el.querySelectorAll('.prog-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      $('phaseEditor').style.display = (p.id === 'custom') ? 'block' : 'none';
     };
-    document.getElementById('btnGuests').onclick = () => send({ type: 'cmd', name: 'scene_show_guests' });
-    document.getElementById('btnEnd').onclick = () => send({ type: 'cmd', name: 'scene_end_special' });
-    document.getElementById('opMode').onchange = (e) => send({ type: 'cmd', name: 'set_operation_mode', value: e.target.value });
-    document.getElementById('program').onchange = (e) => send({ type: 'cmd', name: 'set_light_program', value: e.target.value });
+    el.appendChild(b);
+  });
+  $('phaseEditor').style.display = (activeId === 'custom') ? 'block' : 'none';
+}
 
-    document.getElementById('btnApplyManual').onclick = () => {
-      const r = document.getElementById('mr').value / 100;
-      const g = document.getElementById('mg').value / 100;
-      const b = document.getElementById('mb').value / 100;
-      const w = document.getElementById('mw').value / 100;
-      const br = document.getElementById('mbr').value / 100;
-      send({ type: 'cmd', name: 'set_manual_rgbw', r, g, b, w, brightness: br });
-    };
+function activeProgram(containerId) {
+  const a = document.querySelector('#' + containerId + ' .prog-btn.active');
+  return a ? a.dataset.id : 'plants_pro';
+}
 
-    document.getElementById('btnSaveMqtt').onclick = () => {
-      const o = {
-        type: 'cmd',
-        name: 'set_mqtt_config',
-        enabled: document.getElementById('mqttEnabled').checked,
-        broker_host: document.getElementById('mqttHost').value.trim(),
-        port: parseInt(document.getElementById('mqttPort').value, 10) || 1883,
-        username: document.getElementById('mqttUser').value,
-        client_id: document.getElementById('mqttClientId').value.trim(),
-        topic_prefix: document.getElementById('mqttPrefix').value.trim() || 'aquarium'
-      };
-      if (document.getElementById('mqttClearPass').checked) {
-        o.clear_mqtt_password = true;
-      } else {
-        const pw = document.getElementById('mqttPass').value;
-        if (pw.length > 0) o.password = pw;
-      }
-      send(o);
-      setTimeout(() => send({ type: 'cmd', name: 'get_settings' }), 800);
-    };
+function programLabel(id) {
+  const p = PROGRAMS.find(x => x.id === id);
+  return p ? p.label.replace(' ✏️','') : (id || '—');
+}
 
-    document.getElementById('btnOta').onclick = async () => {
-      const f = document.getElementById('fwfile').files[0];
-      if (!f) {
-        otastat.textContent = 'Оберіть файл .bin';
-        otastat.className = 'row bad';
-        return;
-      }
-      otastat.textContent = 'Завантаження… не закривайте сторінку';
-      otastat.className = 'row';
-      try {
-        const r = await fetch('/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: f
-        });
-        const t = await r.text();
-        if (r.ok) {
-          otastat.textContent = t + ' — з\'єднання зникне під час перезавантаження.';
-          otastat.className = 'row ok';
-        } else {
-          otastat.textContent = r.status + ': ' + t;
-          otastat.className = 'row bad';
-        }
-      } catch (e) {
-        otastat.textContent = 'Мережа: ' + e + ' (часто так буває після успішного OTA — зачекайте й оновіть сторінку)';
-        otastat.className = 'row bad';
-      }
-    };
-  </script>
+// ══════════════════════════════════════════════════════════════════
+// Timezone
+// ══════════════════════════════════════════════════════════════════
+function buildTimezoneOptions(selectedId) {
+  const el = $('timezoneCountry');
+  el.innerHTML = '';
+  TIMEZONE_PRESETS.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.label; o.selected = p.id === selectedId;
+    el.appendChild(o);
+  });
+  updateTimezoneHint();
+}
+
+function selectedTimezonePreset() {
+  const id = $('timezoneCountry').value;
+  return TIMEZONE_PRESETS.find(x => x.id === id) || TIMEZONE_PRESETS[0];
+}
+
+function timezonePresetId(countryId, posix) {
+  const byCountry = TIMEZONE_PRESETS.find(x => x.id === countryId);
+  if (byCountry) return byCountry.id;
+  const byTz = TIMEZONE_PRESETS.find(x => x.tz === posix);
+  return byTz ? byTz.id : 'ua';
+}
+
+function updateTimezoneHint() {
+  const p = selectedTimezonePreset();
+  $('timezoneHint').textContent = 'Збережеться зона "' + p.label + '". Локальний час після синхронізації SNTP.';
+}
+
+function formatClock(h, m, s) {
+  return String(h??0).padStart(2,'0') + ':' + String(m??0).padStart(2,'0') + ':' + String(s??0).padStart(2,'0');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// State / Settings rendering
+// ══════════════════════════════════════════════════════════════════
+function modeInfoFromState(d) {
+  if (d.scene_mode === 6) return { text: 'Гості / 100%',    cls: 'special' };
+  if (d.scene_mode === 3) return { text: 'Кормлення 15 хв', cls: 'special' };
+  if (d.scene_mode === 4) return { text: 'Нічне світло',    cls: 'special' };
+  if (d.scene_mode === 2) return { text: 'Шторм',           cls: 'special' };
+  if (d.scene_mode === 1 || d.operation_mode === 'manual') return { text: 'Ручний', cls: 'manual' };
+  return { text: 'Авто', cls: 'auto' };
+}
+
+function applyState(d) {
+  lastState = d;
+  const mode = modeInfoFromState(d);
+  $('modePill').textContent  = 'Режим: ' + mode.text;
+  $('modePill').className    = 'pill ' + (mode.cls === 'auto' ? 'ok' : 'warn');
+  $('statusModeBadge').textContent = mode.text;
+  $('statusModeBadge').className   = 'badge ' + mode.cls;
+  $('phaseLabel').textContent      = d.phase_label || '—';
+  $('statusBrightness').textContent= Math.round((d.out_brightness || 0) * 100) + '%';
+  $('statusProgram').textContent   = programLabel(d.light_program);
+  $('statusPump').textContent      = d.pump_on ? 'Увімкнена' : 'Вимкнена';
+  $('statusTempValue').textContent = (d.water_temp_c != null && typeof d.water_temp_c === 'number')
+    ? d.water_temp_c.toFixed(1) + ' °C' : '—';
+  $('statusClock').textContent = d.time_valid ? formatClock(d.time_h, d.time_m, d.time_s) : '--:--:--';
+  $('statusWifi').textContent  = d.wifi_rssi != null ? d.wifi_rssi + ' dBm' : '—';
+  $('statusUptime').textContent= d.uptime_ms != null ? Math.round(d.uptime_ms / 1000) + ' s' : '—';
+
+  // temperature pill
+  const tEl = $('tempLabel');
+  if (d.water_temp_c != null && typeof d.water_temp_c === 'number') {
+    tEl.textContent = '🌡 ' + d.water_temp_c.toFixed(1) + ' °C';
+    tEl.className = 'pill ok';
+  } else {
+    tEl.textContent = '🌡 —';
+    tEl.className = 'pill';
+  }
+
+  // time pill
+  if (d.time_valid) {
+    $('timeLabel').textContent = String(d.time_h).padStart(2,'0') + ':' + String(d.time_m).padStart(2,'0');
+    $('timezoneNow').value = formatClock(d.time_h, d.time_m, d.time_s);
+  } else {
+    $('timeLabel').textContent = 'Час нема';
+    $('timezoneNow').value = 'SNTP не синхр.';
+  }
+
+  if (d.fw_version)    $('fwver').textContent   = d.fw_version;
+  if (d.ota_partition) $('otaslot').textContent  = d.ota_partition;
+
+  powerOn = (d.out_brightness || 0) > 0.02;
+
+  if (currentTab === 'manual' && !isUiLocked()) {
+    writeSliders({
+      r: Math.round((d.out_r ?? 0) * 100), g: Math.round((d.out_g ?? 0) * 100),
+      b: Math.round((d.out_b ?? 0) * 100), w: Math.round((d.out_w ?? 0) * 100),
+      brightness: Math.round((d.out_brightness ?? 0) * 100),
+    });
+  }
+  if (currentTab === 'schedule') drawTimeline();
+}
+
+function applySettings(d) {
+  if (!d) return;
+  lastSettings = d;
+
+  if (d.light_program) buildProgramButtons('progSchedule', d.light_program);
+  if (d.hour_start    != null) $('hourStart').value    = hourFloatToTimeString(d.hour_start);
+  if (d.hour_end      != null) $('hourEnd').value      = hourFloatToTimeString(d.hour_end);
+  if (d.hour_moon_end != null) $('hourMoonEnd').value  = hourFloatToTimeString(d.hour_moon_end);
+  if (d.max_brightness_pct  != null) $('maxBrightness').value  = clamp(d.max_brightness_pct, 10, 100);
+  if (d.brightness_trim_pct != null) $('brightnessTrim').value = clamp(d.brightness_trim_pct, 50, 120);
+  if (d.moon_brightness_pct != null) $('moonBrightness').value = clamp(d.moon_brightness_pct, 0, 8);
+
+  buildTimezoneOptions(timezonePresetId(d.timezone_country, d.timezone_posix));
+  $('pumpOn').checked = !!d.pump_on;
+
+  // custom phases
+  if (d.custom_phases) {
+    if (d.custom_phases.dawn) customPhases.dawn = d.custom_phases.dawn;
+    if (d.custom_phases.day)  customPhases.day  = d.custom_phases.day;
+    if (d.custom_phases.moon) customPhases.moon = d.custom_phases.moon;
+    loadPhaseToSliders(activePhase);
+  }
+
+  // presets — update button style
+  if (d.presets && Array.isArray(d.presets)) {
+    document.querySelectorAll('#presetBtns .preset').forEach((btn, i) => {
+      const p = d.presets[i];
+      btn.classList.toggle('saved', !!(p && p.valid));
+      btn.title = (p && p.valid) ? `R${Math.round(p.r*100)} G${Math.round(p.g*100)} B${Math.round(p.b*100)} W${Math.round(p.w*100)} br${Math.round(p.brightness*100)}%` : '';
+    });
+  }
+
+  if (currentTab === 'manual' && d.manual && !isUiLocked()) {
+    writeSliders({
+      r: Math.round((d.manual.r ?? 1) * 100), g: Math.round((d.manual.g ?? 1) * 100),
+      b: Math.round((d.manual.b ?? 1) * 100), w: Math.round((d.manual.w ?? 1) * 100),
+      brightness: Math.round((d.manual.brightness ?? 1) * 100),
+    });
+    syncMasterFromActiveCh();
+  }
+
+  // MQTT pill
+  if (d.mqtt) {
+    const q = d.mqtt;
+    $('mqttEnabled').checked = !!q.enabled;
+    $('mqttHost').value   = q.broker_host || '';
+    $('mqttPort').value   = q.port ?? 1883;
+    $('mqttUser').value   = q.username || '';
+    $('mqttPrefix').value = q.topic_prefix || 'aquarium';
+    const mp = $('mqttPill');
+    if (!q.enabled) { mp.textContent = 'MQTT вимк'; mp.className = 'pill bad'; }
+    else if (!q.broker_host) { mp.textContent = 'MQTT нема IP'; mp.className = 'pill bad'; }
+    else { mp.textContent = q.connected ? 'MQTT OK' : 'MQTT …'; mp.className = 'pill ' + (q.connected ? 'ok' : 'bad'); }
+  }
+}
+
+function collectScheduleSettings() {
+  const sch = scheduleHours();
+  return {
+    operation_mode:      'auto_24h',
+    light_program:       activeProgram('progSchedule'),
+    hour_start:          sch.start,
+    hour_end:            sch.end,
+    hour_moon_end:       sch.moonEnd,
+    max_brightness_pct:  clamp(numVal('maxBrightness',  DEFAULTS.max_brightness_pct),  10, 100),
+    brightness_trim_pct: clamp(numVal('brightnessTrim', DEFAULTS.brightness_trim_pct), 50, 120),
+    moon_brightness_pct: clamp(numVal('moonBrightness', DEFAULTS.moon_brightness_pct),  0,   8),
+    pump_on:             $('pumpOn').checked,
+    custom_phases:       customPhases,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Timeline canvas
+// ══════════════════════════════════════════════════════════════════
+function drawTimeline() {
+  const c = $('timeline');
+  if (!c || c.clientWidth < 10) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = c.clientWidth, ch = 120;
+  c.width = cw * dpr; c.height = ch * dpr;
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+  const sch = scheduleHours();
+  const hs = sch.start, he = sch.end, hm = sch.moonEnd;
+  const riseLen = 40/60, setLen = 40/60;
+  const riseEnd  = Math.min(he, hs + riseLen);
+  const setStart = Math.max(hs, he - setLen);
+  const hx = h => (h / 24) * cw;
+
+  ctx.fillStyle = '#134956'; ctx.fillRect(0, 0, cw, ch);
+  ctx.fillStyle = 'rgba(0,180,216,.08)';   ctx.fillRect(hx(hs), 0, Math.max(0,hx(he)-hx(hs)), ch);
+  ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(hx(hs), 0, Math.max(0,hx(riseEnd)-hx(hs)), ch);
+  ctx.fillStyle = 'rgba(255,159,67,.12)';  ctx.fillRect(hx(setStart), 0, Math.max(0,hx(he)-hx(setStart)), ch);
+  ctx.fillStyle = 'rgba(251,191,36,.08)';  ctx.fillRect(hx(he), 0, Math.max(0,hx(hm)-hx(he)), ch);
+
+  ctx.strokeStyle = '#00b4d8'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let x = 0; x <= cw; x++) {
+    const hour = (x / cw) * 24;
+    let y = 0.05;
+    if (hour >= hs && hour < riseEnd)       y = 0.08 + 0.6 * ((hour - hs) / Math.max(.05, riseEnd - hs));
+    else if (hour >= riseEnd && hour < setStart) y = 0.95;
+    else if (hour >= setStart && hour < he) y = 0.12 + 0.6 * (1 - (hour - setStart) / Math.max(.05, he - setStart));
+    else if (hour >= he && hour < hm)       y = 0.08;
+    const py = ch - y * (ch - 16) - 8;
+    x === 0 ? ctx.moveTo(x, py) : ctx.lineTo(x, py);
+  }
+  ctx.stroke();
+
+  if (lastState.time_valid && lastState.time_h != null) {
+    const nowX = ((lastState.time_h + (lastState.time_m || 0) / 60) / 24) * cw;
+    ctx.strokeStyle = '#fbbf24'; ctx.beginPath(); ctx.moveTo(nowX, 0); ctx.lineTo(nowX, ch); ctx.stroke();
+  }
+
+  ctx.fillStyle = '#8eb8c4'; ctx.font = '11px sans-serif';
+  ctx.fillText('00:00', 4, ch-6); ctx.fillText('12:00', cw/2-16, ch-6); ctx.fillText('24:00', cw-34, ch-6);
+
+  $('capStart').textContent   = $('hourStart').value   || DEFAULTS.hour_start;
+  $('capEnd').textContent     = $('hourEnd').value     || DEFAULTS.hour_end;
+  $('capMoonEnd').textContent = $('hourMoonEnd').value || DEFAULTS.hour_moon_end;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Tab navigation
+// ══════════════════════════════════════════════════════════════════
+function showTab(tab) {
+  if (!TAB_PANEL[tab]) return;
+  currentTab = tab;
+  sessionStorage.setItem('aq_tab', tab);
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  $(TAB_PANEL[tab]).classList.add('active');
+  document.querySelectorAll('#mainNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'schedule') requestAnimationFrame(drawTimeline);
+  if (tab === 'settings') send({ type: 'cmd', name: 'get_settings' });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// WebSocket
+// ══════════════════════════════════════════════════════════════════
+function connect() {
+  if (wsConnecting) return;
+  wsConnecting = true;
+  const sock = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws');
+  ws = sock;
+
+  sock.onopen = () => {
+    wsConnecting = false;
+    $('wsPill').textContent = 'WS OK'; $('wsPill').className = 'pill ok';
+    send({ type: 'cmd', name: 'get_state' });
+    send({ type: 'cmd', name: 'get_settings' });
+    showTab(currentTab);
+  };
+
+  sock.onclose = () => {
+    wsConnecting = false;
+    $('wsPill').textContent = 'WS …'; $('wsPill').className = 'pill bad';
+    setTimeout(connect, 2500);
+  };
+
+  sock.onerror = () => log('WS помилка');
+
+  sock.onmessage = ev => {
+    try {
+      const j = JSON.parse(ev.data);
+      if (j.type === 'state' && j.data)    applyState(j.data);
+      else if (j.type === 'settings' && j.data) applySettings(j.data);
+      else if (j.type === 'ack')           refreshSoon(120);
+      else if (j.type === 'error')         log('ERR: ' + (j.msg || ev.data));
+    } catch(e) { log(ev.data); }
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Event wiring
+// ══════════════════════════════════════════════════════════════════
+document.querySelectorAll('#mainNav button').forEach(b => {
+  b.addEventListener('click', e => { e.preventDefault(); showTab(b.dataset.tab); });
+});
+
+$('btnRefresh').onclick = () => { send({type:'cmd',name:'get_state'}); refreshSoon(50); };
+$('btnActivateAuto').onclick = () => { send({type:'cmd',name:'set_operation_mode',value:'auto_24h'}); refreshSoon(); };
+$('btnGuests').onclick = () => { send({type:'cmd',name:'scene_show_guests'}); refreshSoon(); };
+$('btnFeed').onclick   = () => { send({type:'cmd',name:'scene_feed_15min'}); refreshSoon(); };
+$('btnMoon').onclick   = () => { send({type:'cmd',name:'scene_manual_moon'}); refreshSoon(); };
+$('btnLightning').onclick     = () => { send({type:'cmd',name:'scene_lightning'}); refreshSoon(); };
+$('btnStopSpecial').onclick   = () => { send({type:'cmd',name:'scene_end_special'}); refreshSoon(); };
+
+// Manual panel
+$('btnPower').addEventListener('click', () => {
+  lockUi(500); powerOn = !powerOn;
+  if (!powerOn) $('masterBright').value = 0;
+  else if (+$('masterBright').value === 0) $('masterBright').value = 100;
+  $('brightPct').textContent = $('masterBright').value;
+  updatePowerUi(); applyManualLive();
+});
+
+$('masterBright').addEventListener('input', () => {
+  lockUi(800);
+  const v = +$('masterBright').value;
+  $('brightPct').textContent = v;
+  const sl = readSliders();
+  if (activeCh === 'all') { sl.r = sl.g = sl.b = sl.w = sl.brightness = v; }
+  else sl[activeCh] = v;
+  writeSliders(sl, false); powerOn = v > 0; updatePowerUi(); applyManualLive();
+});
+
+[['slR','r'],['slG','g'],['slB','b'],['slW','w']].forEach(([id, ch]) => {
+  $(id).addEventListener('input', () => {
+    lockUi(800);
+    if (activeCh === ch || activeCh === 'all') syncMasterFromActiveCh();
+    applyManualLive();
+  });
+});
+
+document.querySelectorAll('.dot').forEach(d => {
+  d.addEventListener('click', e => { e.preventDefault(); selectColorChannel(d.dataset.ch); });
+});
+
+$('btnApplyManual').onclick     = () => { lockUi(500); applyManualLive(); refreshSoon(); };
+$('btnManualAutoBack').onclick  = () => { send({type:'cmd',name:'set_operation_mode',value:'auto_24h'}); refreshSoon(); };
+
+// Presets — load on click, save on 2s hold
+document.querySelectorAll('#presetBtns .preset').forEach(btn => {
+  const idx = parseInt(btn.dataset.p, 10);
+
+  btn.addEventListener('click', () => {
+    const saved = lastSettings.presets && lastSettings.presets[idx];
+    if (saved && saved.valid) {
+      lockUi(400);
+      writeSliders({
+        r: Math.round(saved.r*100), g: Math.round(saved.g*100),
+        b: Math.round(saved.b*100), w: Math.round(saved.w*100),
+        brightness: Math.round(saved.brightness*100),
+      });
+      selectColorChannel(activeCh);
+      applyManualLive();
+    }
+  });
+
+  btn.addEventListener('pointerdown', () => {
+    presetHoldTimer = setTimeout(() => {
+      const sl = pctTo01(readSliders());
+      send({ type:'cmd', name:'save_preset', index:idx, ...sl });
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = 'P' + (idx+1); }, 800);
+      refreshSoon(400);
+    }, 2000);
+  });
+  btn.addEventListener('pointerup',    () => clearTimeout(presetHoldTimer));
+  btn.addEventListener('pointerleave', () => clearTimeout(presetHoldTimer));
+});
+
+// Schedule / phase editor
+document.querySelectorAll('.ptab').forEach(b => {
+  b.addEventListener('click', () => selectPhase(b.dataset.phase));
+});
+
+['phR','phG','phB','phW'].forEach(id => {
+  $(id).addEventListener('input', () => { saveSliderToPhase(); });
+});
+
+$('btnPreviewPhase').onclick = () => {
+  const pc = customPhases[activePhase];
+  const bPct = numVal('maxBrightness', 70);
+  const b = bPct / 100;
+  send({ type:'cmd', name:'set_manual_rgbw', r:pc.r, g:pc.g, b:pc.b, w:pc.w, brightness: activePhase === 'moon' ? numVal('moonBrightness',4)/100 : b });
+  refreshSoon();
+};
+
+$('btnSaveSchedule').onclick = () => {
+  const data = collectScheduleSettings();
+  send({ type:'cmd', name:'set_settings', data });
+  refreshSoon();
+};
+
+$('btnPreviewGuests').onclick = () => { send({type:'cmd',name:'scene_show_guests'}); refreshSoon(); };
+
+['hourStart','hourEnd','hourMoonEnd','maxBrightness','moonBrightness'].forEach(id => {
+  $(id).addEventListener('input',  () => drawTimeline());
+  $(id).addEventListener('change', () => drawTimeline());
+});
+
+// Settings panel
+$('timezoneCountry').addEventListener('change', updateTimezoneHint);
+
+$('btnSaveClock').onclick = () => {
+  const p = selectedTimezonePreset();
+  send({ type:'cmd', name:'set_settings', data:{ timezone_country:p.id, timezone_posix:p.tz } });
+  refreshSoon();
+};
+
+$('pumpOn').onchange = e => { send({type:'cmd',name:'set_pump',on:e.target.checked}); refreshSoon(); };
+$('btnLoadSettings').onclick = () => { send({type:'cmd',name:'get_settings'}); drawTimeline(); };
+
+$('btnSaveMqtt').onclick = () => {
+  const host = $('mqttHost').value.trim();
+  if ($('mqttEnabled').checked && !host) { alert('Вкажіть IP брокера MQTT'); return; }
+  const o = {
+    type:'cmd', name:'set_mqtt_config',
+    enabled: $('mqttEnabled').checked, broker_host: host,
+    port: parseInt($('mqttPort').value,10) || 1883,
+    username: $('mqttUser').value,
+    topic_prefix: $('mqttPrefix').value.trim() || 'aquarium',
+  };
+  const pw = $('mqttPass').value;
+  if (pw) o.password = pw;
+  send(o); refreshSoon(300);
+};
+
+$('btnOta').onclick = async () => {
+  const f = $('fwfile').files[0];
+  if (!f) return;
+  $('otastat').textContent = 'Завантаження…';
+  try {
+    const r = await fetch('/update', { method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:f });
+    $('otastat').textContent = await r.text();
+  } catch(e) { $('otastat').textContent = String(e); }
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════════════════════════════
+buildProgramButtons('progSchedule', 'plants_pro');
+buildTimezoneOptions('ua');
+selectColorChannel('all');
+selectPhase('dawn');
+showTab(currentTab);
+window.addEventListener('resize', () => drawTimeline());
+connect();
+</script>
 </body>
 </html>

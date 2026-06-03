@@ -59,8 +59,10 @@ char* state_to_json_malloc(const DeviceState& s) {
     cJSON_AddNullToObject(d, "fw_version");
     cJSON_AddNullToObject(d, "fw_idf");
   }
+  // `esp_partition_t::label` — фіксований масив char[16], тож достатньо перевірити саму партицію
+  // та непорожній перший байт мітки.
   const esp_partition_t* run = esp_ota_get_running_partition();
-  if (run != nullptr && run->label != nullptr) {
+  if (run != nullptr && run->label[0] != '\0') {
     cJSON_AddStringToObject(d, "ota_partition", run->label);
   } else {
     cJSON_AddNullToObject(d, "ota_partition");

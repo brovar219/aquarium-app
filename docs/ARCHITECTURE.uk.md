@@ -53,6 +53,7 @@
 - Відповідь на команду: `{topic_prefix}/reply` (QoS 1).
 - Періодичний стан: `{topic_prefix}/state` (~4 с), формат `type: "state"`.
 - LWT: `{topic_prefix}/status` → `offline` / при підключенні `online` (retain).
+- **Home Assistant:** auto-discovery `homeassistant/light/...` та `homeassistant/switch/..._pump`; команди `{prefix}/light/set`, `{prefix}/pump/set` (див. [HOME_ASSISTANT.uk.md](HOME_ASSISTANT.uk.md)).
 
 Розширення протоколу: додавати нові `name` без зміни URL; версія API — поле `api` у привітальному `hello` після підключення.
 

@@ -16,11 +16,14 @@ static constexpr ledc_channel_t kCh[4] = {LEDC_CHANNEL_0, LEDC_CHANNEL_1, LEDC_C
                                           LEDC_CHANNEL_3};
 
 RgbwLedc::RgbwLedc() {
+  // ESP32-C6 LEDC: PLL_DIV_CLK = 80 МГц. Для 13-біт (8192 кроки) частота × резолюція
+  // не повинна перевищувати 80 МГц. 12 кГц × 8192 ≈ 98 МГц — недосяжно.
+  // 5 кГц × 8192 ≈ 41 МГц — підходить і повністю поза чутним діапазоном.
   ledc_timer_config_t t = {};
   t.speed_mode = LEDC_LOW_SPEED_MODE;
   t.duty_resolution = LEDC_TIMER_13_BIT;
   t.timer_num = LEDC_TIMER_0;
-  t.freq_hz = 12000;
+  t.freq_hz = 5000;
   t.clk_cfg = LEDC_AUTO_CLK;
   ESP_ERROR_CHECK(ledc_timer_config(&t));
 
@@ -41,7 +44,7 @@ RgbwLedc::RgbwLedc() {
 void RgbwLedc::set_one(int idx, float x) {
   x = std::min(1.F, std::max(0.F, x));
   const float g = std::pow(x, 2.2F);
-  const uint32_t duty = static_cast<uint32_t>((1.F - g) * static_cast<float>(kMaxDuty));
+  const uint32_t duty = static_cast<uint32_t>(g * static_cast<float>(kMaxDuty));
   ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, kCh[idx], duty));
   ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, kCh[idx]));
 }

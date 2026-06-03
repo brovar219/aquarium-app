@@ -40,7 +40,7 @@ static void ws_send_text_work(void* arg) {
   pkt.len = strlen(w->json);
   const esp_err_t e = httpd_ws_send_frame_async(w->hd, w->fd, &pkt);
   if (e != ESP_OK) {
-    ESP_LOGW(TAG, "ws_send_frame_async: %s", esp_err_to_name(e));
+    ESP_LOGW(TAG, "ws_send_frame_async fd=%d: %s", w->fd, esp_err_to_name(e));
   }
   free(w->json);
   free(w);
@@ -54,14 +54,24 @@ static esp_err_t root_get(httpd_req_t* req) {
 }
 
 static esp_err_t ws_handler(httpd_req_t* req) {
-  HttpWsPortal::set_ws_client_fd(httpd_req_to_sockfd(req));
+  const int fd = httpd_req_to_sockfd(req);
+
+  // First call during HTTP→WS handshake: method stays HTTP_GET.
+  // Do NOT call httpd_ws_recv_frame here — no WS frame exists yet.
+  if (req->method == HTTP_GET) {
+    HttpWsPortal::set_ws_client_fd(fd);
+    ESP_LOGI(TAG, "WS client connected fd=%d", fd);
+    return ESP_OK;
+  }
+
+  HttpWsPortal::set_ws_client_fd(fd);
 
   httpd_ws_frame_t ws_pkt{};
   memset(&ws_pkt, 0, sizeof(ws_pkt));
   ws_pkt.type = HTTPD_WS_TYPE_TEXT;
   esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "ws recv len %s", esp_err_to_name(ret));
+    ESP_LOGW(TAG, "ws recv len: %s", esp_err_to_name(ret));
     return ret;
   }
 
@@ -87,14 +97,15 @@ static esp_err_t ws_handler(httpd_req_t* req) {
     return ESP_OK;
   }
 
-  DeviceService* svc = HttpWsPortal::s_svc_;
+  DeviceService* svc = HttpWsPortal::service();
   if (svc == nullptr) {
     free(buf);
     return ESP_FAIL;
   }
 
-  const std::string reply = ws_pkt.len ? aq::dispatch_ipc_json(reinterpret_cast<char*>(buf), svc)
-                                     : aq::dispatch_ipc_json(R"({"type":"cmd","name":"get_state"})", svc);
+  const std::string reply = ws_pkt.len
+      ? aq::dispatch_ipc_json(reinterpret_cast<char*>(buf), svc)
+      : aq::dispatch_ipc_json(R"({"type":"cmd","name":"get_state"})", svc);
 
   free(buf);
 
@@ -111,7 +122,7 @@ static esp_err_t ws_handler(httpd_req_t* req) {
   ret = httpd_ws_send_frame(req, &out);
   free(outbuf);
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "ws send %s", esp_err_to_name(ret));
+    ESP_LOGW(TAG, "ws send: %s", esp_err_to_name(ret));
   }
   return ret;
 }
@@ -123,21 +134,18 @@ esp_err_t HttpWsPortal::start(httpd_handle_t* out_server, DeviceService* svc) {
   cfg.stack_size = 8192;
   cfg.max_uri_handlers = 10;
   cfg.lru_purge_enable = true;
-  // Довший таймаут для прийому тіла POST /update (OTA), байти можуть йти повільно.
   cfg.recv_wait_timeout = 120;
   cfg.send_wait_timeout = 30;
+
   if (httpd_start(out_server, &cfg) != ESP_OK) {
-    ESP_LOGE(TAG, "httpd_start");
+    ESP_LOGE(TAG, "httpd_start failed");
     return ESP_FAIL;
   }
   s_hd_ = *out_server;
 
   httpd_uri_t u_root = {.uri = "/", .method = HTTP_GET, .handler = root_get, .user_ctx = nullptr};
-  httpd_uri_t u_ws = {.uri = "/ws",
-                      .method = HTTP_GET,
-                      .handler = ws_handler,
-                      .user_ctx = nullptr,
-                      .is_websocket = true};
+  httpd_uri_t u_ws   = {.uri = "/ws", .method = HTTP_GET, .handler = ws_handler,
+                        .user_ctx = nullptr, .is_websocket = true};
 
   ESP_ERROR_CHECK(httpd_register_uri_handler(*out_server, &u_root));
   ESP_ERROR_CHECK(httpd_register_uri_handler(*out_server, &u_ws));
@@ -147,34 +155,23 @@ esp_err_t HttpWsPortal::start(httpd_handle_t* out_server, DeviceService* svc) {
 }
 
 void HttpWsPortal::stop(httpd_handle_t server) {
-  if (server) {
-    httpd_stop(server);
-  }
+  if (server) httpd_stop(server);
   s_hd_ = nullptr;
   s_ws_fd_ = -1;
 }
 
 void HttpWsPortal::set_ws_client_fd(int fd) { s_ws_fd_ = fd; }
-
 int HttpWsPortal::ws_client_fd() { return s_ws_fd_; }
-
 httpd_handle_t HttpWsPortal::server_handle() { return s_hd_; }
 
 void HttpWsPortal::queue_state_broadcast() {
-  if (s_hd_ == nullptr || s_ws_fd_ < 0 || s_svc_ == nullptr) {
-    return;
-  }
+  if (s_hd_ == nullptr || s_ws_fd_ < 0 || s_svc_ == nullptr) return;
   char* js = state_to_json_malloc(s_svc_->snapshot());
-  if (js == nullptr) {
-    return;
-  }
+  if (js == nullptr) return;
   auto* w = static_cast<AsyncWsText*>(malloc(sizeof(AsyncWsText)));
-  if (w == nullptr) {
-    free(js);
-    return;
-  }
-  w->hd = s_hd_;
-  w->fd = s_ws_fd_;
+  if (w == nullptr) { free(js); return; }
+  w->hd   = s_hd_;
+  w->fd   = s_ws_fd_;
   w->json = js;
   if (httpd_queue_work(s_hd_, ws_send_text_work, w) != ESP_OK) {
     free(js);
