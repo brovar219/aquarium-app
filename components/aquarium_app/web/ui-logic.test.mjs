@@ -111,4 +111,45 @@ assert.strictEqual(formatClock(7, 5, 9), '07:05:09');
 assert.strictEqual(clamp(18, 0, 8), 8);
 assert.strictEqual(clamp(5, 10, 100), 10);
 
+// ── Нічне світло: вікно з переходом через північ (дзеркало schedule_engine.cpp) ──
+function nightLightActive(hour, hs, he, hm, moon) {
+  const hm2 = hm > he ? hm : hm + 24;
+  const hr = hour < hs ? hour + 24 : hour;
+  const inDay = hour >= hs && hour < he;
+  return !inDay && hr >= he && hr < hm2 && moon > 0.001;
+}
+// день 9-21, місяць до 07:00 наступного ранку
+assert.strictEqual(nightLightActive(23, 9, 21, 7, 0.2), true,  'місяць увечері');
+assert.strictEqual(nightLightActive(2,  9, 21, 7, 0.2), true,  'місяць після опівночі');
+assert.strictEqual(nightLightActive(8,  9, 21, 7, 0.2), false, 'після moon_end — ніч');
+assert.strictEqual(nightLightActive(12, 9, 21, 7, 0.2), false, 'удень — не місяць');
+assert.strictEqual(nightLightActive(23, 9, 21, 7, 0.0), false, 'moon=0 — без нічного');
+
+// ── Ліміт нічного світла піднято з 8% до 30% ──
+const clampMoon = (v) => clamp(v, 0, 30);
+assert.strictEqual(clampMoon(20), 20, '20% тримається');
+assert.strictEqual(clampMoon(50), 30, '50% затиснуто до 30');
+
+// ── MQTT: поки редагуєш — не заповнювати поля зі стану ──
+const shouldFillMqttFields = (editing) => !editing;
+assert.strictEqual(shouldFillMqttFields(true), false, 'під час набору IP не перезаписувати');
+assert.strictEqual(shouldFillMqttFields(false), true, 'після збереження — заповнити');
+
+// ── Пилюля погоди ──
+function weatherPillText(d) {
+  if (!d || !d.weather_valid) return '⛅ —';
+  return '⛅ ' + Math.round(d.weather_temp_c) + '° ' + (d.weather_desc || '') +
+    ' · хмари ' + Math.round(d.weather_cloud) + '%';
+}
+assert.strictEqual(weatherPillText({ weather_valid: false }), '⛅ —');
+assert.strictEqual(
+  weatherPillText({ weather_valid: true, weather_temp_c: 17.3, weather_desc: 'Мінлива хмарність', weather_cloud: 31 }),
+  '⛅ 17° Мінлива хмарність · хмари 31%');
+
+// ── Множник яскравості від хмарності (дзеркало apply_weather_to_target) ──
+const cloudDim = (cloud) => 1 - 0.55 * clamp(cloud, 0, 100) / 100;
+assert.ok(Math.abs(cloudDim(0) - 1.0) < 1e-9, 'ясно — без приглушення');
+assert.ok(Math.abs(cloudDim(100) - 0.45) < 1e-9, 'суцільна хмарність — 45%');
+assert.ok(Math.abs(cloudDim(31) - 0.8295) < 1e-9, '31% хмар → 0.83');
+
 console.log('ui-logic.test.mjs: OK');
