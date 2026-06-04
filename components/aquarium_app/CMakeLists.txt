@@ -17,6 +17,7 @@ idf_component_register(
         "src/api_dispatch.cpp"
         "src/mqtt_ha_bridge.cpp"
         "src/temperature_ds18b20.cpp"
+        "src/weather_client.cpp"
     INCLUDE_DIRS "include"
     EMBED_FILES "web/index.html"
-    REQUIRES driver esp_http_server esp_wifi esp_netif esp_event nvs_flash esp_timer json app_update esp_partition mqtt onewire_bus ds18b20)
+    REQUIRES driver esp_http_server esp_http_client esp-tls mbedtls esp_wifi esp_netif esp_event nvs_flash esp_timer json app_update esp_partition mqtt onewire_bus ds18b20)

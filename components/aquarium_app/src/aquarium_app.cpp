@@ -15,7 +15,10 @@
 #include "rgbw_ledc.hpp"
 #include "schedule_engine.hpp"
 #include "temperature_ds18b20.hpp"
+#include "weather_client.hpp"
 #include "wifi_station.hpp"
+
+#include <cstring>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -74,6 +77,55 @@ void start() {
         }
       },
       "aq_tick", 8192, &device, 5, nullptr);
+
+  // Окрема швидка задача грози: для природного мерехтіння блискавки потрібні
+  // спалахи 20–50 мс, що недосяжно при тіку 100 мс. Поки гроза активна —
+  // каденція 15 мс; у спокої задача майже спить (150 мс). Пріоритет вищий за
+  // aq_tick, щоб дрож не «плив». Світлом під час грози керує лише ця задача.
+  xTaskCreate(
+      [](void* arg) {
+        auto* svc = static_cast<aq::DeviceService*>(arg);
+        for (;;) {
+          const bool active = svc->storm_task_step();
+          vTaskDelay(pdMS_TO_TICKS(active ? 8 : 150));
+        }
+      },
+      "aq_storm", 4096, &device, 6, nullptr);
+
+  // Фонова задача погоди (Open-Meteo, без API-ключа). Геокодимо місто у
+  // координати (тільки коли місто змінилось), далі тягнемо поточну погоду.
+  // Успіх → опитуємо раз на 20 хв; помилка/немає міста → ретрай через 60 с.
+  xTaskCreate(
+      [](void* arg) {
+        auto* svc = static_cast<aq::DeviceService*>(arg);
+        char city[48] = {0};
+        char last_city[48] = {0};
+        char resolved[48] = {0};
+        float lat = 0.F, lon = 0.F;
+        bool have_loc = false;
+        for (;;) {
+          bool ok = false;
+          svc->weather_get_city(city, sizeof(city));
+          if (city[0] != '\0') {
+            if (strcmp(city, last_city) != 0) {
+              have_loc = aq::weather_geocode(city, lat, lon, resolved, sizeof(resolved));
+              if (have_loc) {
+                strncpy(last_city, city, sizeof(last_city) - 1);
+                last_city[sizeof(last_city) - 1] = '\0';
+              }
+            }
+            if (have_loc) {
+              aq::WeatherData wd;
+              if (aq::weather_fetch(lat, lon, wd)) {
+                svc->weather_set_result(wd, resolved);
+                ok = true;
+              }
+            }
+          }
+          vTaskDelay(pdMS_TO_TICKS(ok ? (20 * 60 * 1000) : 60 * 1000));
+        }
+      },
+      "aq_weather", 8192, &device, 4, nullptr);
 }
 
 }  // namespace aquarium_app

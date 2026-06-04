@@ -22,11 +22,11 @@ bool EspTimeSource::local_time(int& hour, int& minute, int& second) const {
 }
 
 bool EspTimeSource::is_valid() const {
-  // У ESP-IDF v5.5 цей enum називається `sntp_sync_status_t` (без префікса `esp_`).
-  const sntp_sync_status_t st = esp_sntp_get_sync_status();
-  if (st != SNTP_SYNC_STATUS_COMPLETED) {
-    return false;
-  }
+  // НЕ покладаємось на esp_sntp_get_sync_status(): статус SNTP_SYNC_STATUS_COMPLETED
+  // у ESP-IDF тримається лише мить після синхронізації, а далі скидається в RESET,
+  // тож перевірка статусу робила час «невалідним» назавжди навіть після вдалого синку
+  // (пристрій застрягав на запасній годині 14:00 = вічний день, не вимикався вночі).
+  // Канонічна перевірка «годинник виставлено» — рік у системному часі.
   struct timeval tv {};
   if (gettimeofday(&tv, nullptr) != 0) {
     return false;

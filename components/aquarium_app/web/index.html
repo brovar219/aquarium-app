@@ -111,6 +111,7 @@
     <span class="pill" id="timeLabel">--:--</span>
     <span class="pill" id="wsPill">WS …</span>
     <span class="pill" id="mqttPill">MQTT …</span>
+    <span class="pill" id="weatherPill">⛅ —</span>
   </div>
 </header>
 
@@ -226,7 +227,7 @@
         <div class="field"><label>Кінець дня</label><input type="time" id="hourEnd" value="17:00" step="300" /></div>
         <div class="field"><label>Нічне до</label><input type="time" id="hourMoonEnd" value="18:00" step="300" /></div>
         <div class="field"><label>Денна яскравість, %</label><input type="number" id="maxBrightness" min="10" max="100" value="70" /></div>
-        <div class="field"><label>Нічне світло, %</label><input type="number" id="moonBrightness" min="0" max="8" step="1" value="4" /></div>
+        <div class="field"><label>Нічне світло, %</label><input type="number" id="moonBrightness" min="0" max="30" step="1" value="4" /></div>
       </div>
       <div class="btn-row">
         <button type="button" class="btn" id="btnSaveSchedule">Зберегти</button>
@@ -245,6 +246,17 @@
       </div>
       <p class="hint" id="timezoneHint"></p>
       <div class="btn-row"><button type="button" class="btn secondary" id="btnSaveClock">Зберегти</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Погода (Open-Meteo)</h3>
+      <div class="grid2">
+        <div class="field"><label>Місто</label><input type="text" id="weatherCity" placeholder="Kyiv" /></div>
+        <div class="field"><label>Зараз</label><input type="text" id="weatherNow" value="—" readonly /></div>
+      </div>
+      <label style="margin-top:8px;display:block"><input type="checkbox" id="weatherLink" /> Прив'язати світло до погоди (етап 2)</label>
+      <p class="hint">Показ погоди працює завжди. Галочка вмикає вплив на світло (поки в розробці). Без API-ключа.</p>
+      <div class="btn-row"><button type="button" class="btn secondary" id="btnSaveWeather">Зберегти</button></div>
     </div>
 
     <div class="card">
@@ -561,6 +573,8 @@ function modeInfoFromState(d) {
   return { text: 'Авто', cls: 'auto' };
 }
 
+let mqttEditing = false;  // поки користувач у полях MQTT — не перезаписувати їх зі стану
+
 function applyState(d) {
   lastState = d;
   const mode = modeInfoFromState(d);
@@ -597,6 +611,23 @@ function applyState(d) {
     $('timezoneNow').value = 'SNTP не синхр.';
   }
 
+  // weather
+  const wp = $('weatherPill');
+  if (wp) {
+    if (d.weather_valid) {
+      const desc = d.weather_desc || '';
+      wp.textContent = '⛅ ' + Math.round(d.weather_temp_c) + '° ' + desc + ' · хмари ' + Math.round(d.weather_cloud) + '%';
+      wp.className = 'pill ok';
+      const nowEl = $('weatherNow');
+      if (nowEl) nowEl.value = (d.weather_city ? d.weather_city + ' · ' : '') + desc +
+        ', ' + Math.round(d.weather_temp_c) + '°C, хмари ' + Math.round(d.weather_cloud) +
+        '%, вітер ' + Math.round(d.weather_wind) + ' км/год' + (d.weather_is_day ? ' ☀' : ' 🌙');
+    } else {
+      wp.textContent = '⛅ —';
+      wp.className = 'pill';
+    }
+  }
+
   if (d.fw_version)    $('fwver').textContent   = d.fw_version;
   if (d.ota_partition) $('otaslot').textContent  = d.ota_partition;
 
@@ -622,10 +653,13 @@ function applySettings(d) {
   if (d.hour_moon_end != null) $('hourMoonEnd').value  = hourFloatToTimeString(d.hour_moon_end);
   if (d.max_brightness_pct  != null) $('maxBrightness').value  = clamp(d.max_brightness_pct, 10, 100);
   if (d.brightness_trim_pct != null) $('brightnessTrim').value = clamp(d.brightness_trim_pct, 50, 120);
-  if (d.moon_brightness_pct != null) $('moonBrightness').value = clamp(d.moon_brightness_pct, 0, 8);
+  if (d.moon_brightness_pct != null) $('moonBrightness').value = clamp(d.moon_brightness_pct, 0, 30);
 
   buildTimezoneOptions(timezonePresetId(d.timezone_country, d.timezone_posix));
   $('pumpOn').checked = !!d.pump_on;
+
+  if (d.weather_city != null && $('weatherCity')) $('weatherCity').value = d.weather_city;
+  if ($('weatherLink')) $('weatherLink').checked = !!d.weather_link;
 
   // custom phases
   if (d.custom_phases) {
@@ -653,14 +687,17 @@ function applySettings(d) {
     syncMasterFromActiveCh();
   }
 
-  // MQTT pill
+  // MQTT pill (завжди) + поля форми лише коли НЕ редагуєш — інакше секундний
+  // broadcast затирав би ввід прямо під час набору IP.
   if (d.mqtt) {
     const q = d.mqtt;
-    $('mqttEnabled').checked = !!q.enabled;
-    $('mqttHost').value   = q.broker_host || '';
-    $('mqttPort').value   = q.port ?? 1883;
-    $('mqttUser').value   = q.username || '';
-    $('mqttPrefix').value = q.topic_prefix || 'aquarium';
+    if (!mqttEditing) {
+      $('mqttEnabled').checked = !!q.enabled;
+      $('mqttHost').value   = q.broker_host || '';
+      $('mqttPort').value   = q.port ?? 1883;
+      $('mqttUser').value   = q.username || '';
+      $('mqttPrefix').value = q.topic_prefix || 'aquarium';
+    }
     const mp = $('mqttPill');
     if (!q.enabled) { mp.textContent = 'MQTT вимк'; mp.className = 'pill bad'; }
     else if (!q.broker_host) { mp.textContent = 'MQTT нема IP'; mp.className = 'pill bad'; }
@@ -678,7 +715,7 @@ function collectScheduleSettings() {
     hour_moon_end:       sch.moonEnd,
     max_brightness_pct:  clamp(numVal('maxBrightness',  DEFAULTS.max_brightness_pct),  10, 100),
     brightness_trim_pct: clamp(numVal('brightnessTrim', DEFAULTS.brightness_trim_pct), 50, 120),
-    moon_brightness_pct: clamp(numVal('moonBrightness', DEFAULTS.moon_brightness_pct),  0,   8),
+    moon_brightness_pct: clamp(numVal('moonBrightness', DEFAULTS.moon_brightness_pct),  0,   30),
     pump_on:             $('pumpOn').checked,
     custom_phases:       customPhases,
   };
@@ -906,6 +943,13 @@ $('btnSaveClock').onclick = () => {
 
 $('pumpOn').onchange = e => { send({type:'cmd',name:'set_pump',on:e.target.checked}); refreshSoon(); };
 $('btnLoadSettings').onclick = () => { send({type:'cmd',name:'get_settings'}); drawTimeline(); };
+$('btnSaveWeather').onclick = () => {
+  send({ type:'cmd', name:'set_settings', data:{
+    weather_city: $('weatherCity').value.trim(),
+    weather_link: $('weatherLink').checked,
+  }});
+  setTimeout(() => send({ type:'cmd', name:'get_settings' }), 300);
+};
 
 $('btnSaveMqtt').onclick = () => {
   const host = $('mqttHost').value.trim();
@@ -919,8 +963,17 @@ $('btnSaveMqtt').onclick = () => {
   };
   const pw = $('mqttPass').value;
   if (pw) o.password = pw;
-  send(o); refreshSoon(300);
+  send(o);
+  mqttEditing = false;  // дозволити стану заповнити поля вже збереженими значеннями
+  $('mqttPass').value = '';
+  refreshSoon(300);
 };
+
+// Поки редагуєш поля MQTT — блокуємо перезапис зі стану (інакше IP зникав під час набору).
+['mqttEnabled','mqttHost','mqttPort','mqttUser','mqttPass','mqttPrefix'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('focus', () => { mqttEditing = true; });
+});
 
 $('btnOta').onclick = async () => {
   const f = $('fwfile').files[0];

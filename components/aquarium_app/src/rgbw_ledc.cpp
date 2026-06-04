@@ -43,8 +43,9 @@ RgbwLedc::RgbwLedc() {
 
 void RgbwLedc::set_one(int idx, float x) {
   x = std::min(1.F, std::max(0.F, x));
-  const float g = std::pow(x, 2.2F);
-  const uint32_t duty = static_cast<uint32_t>(g * static_cast<float>(kMaxDuty));
+  // Інверсія потрібна: MOSFET відкривається при LOW (duty=0 → GPIO низький → LED увімкнено).
+  // Без гамми 2.2 — лінійний відгук, інакше тьмяні сцени (місяць 4%) були б невидимі.
+  const uint32_t duty = static_cast<uint32_t>((1.0F - x) * static_cast<float>(kMaxDuty));
   ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, kCh[idx], duty));
   ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, kCh[idx]));
 }

@@ -66,7 +66,7 @@ struct ManualPreset {
 
 struct PersistedSettings {
   uint32_t magic{0xA01A01U};
-  uint16_t version{5};
+  uint16_t version{6};
 
   OperationMode operation_mode{OperationMode::AUTO_24H};
   LightProgram light_program{LightProgram::PLANTS_PRO};
@@ -95,6 +95,12 @@ struct PersistedSettings {
   // v5 additions — zero-initialised when loading older NVS blobs
   CustomPhases custom_phases{};
   ManualPreset presets[4]{};
+
+  // v6 additions — погода (Open-Meteo). Нові поля ТІЛЬКИ в кінці структури,
+  // інакше зламається міграція NVS (читається min(stored, sizeof)).
+  char weather_city[48]{""};   // назва міста для геокодингу
+  bool weather_link{false};    // прив'язувати світло до погоди (етап 2)
+  uint8_t _wpad[3]{};
 };
 
 struct DeviceState {
@@ -123,6 +129,15 @@ struct DeviceState {
 
   int wifi_rssi{0};
   int64_t uptime_ms{0};
+
+  // ── Погода (Open-Meteo), оновлюється фоновою задачею ──
+  bool weather_valid{false};
+  int weather_code{0};        // WMO weather_code
+  float weather_cloud{0.F};   // хмарність, %
+  float weather_temp_c{0.F};  // температура повітря
+  float weather_wind{0.F};    // вітер, км/год
+  bool weather_is_day{true};
+  std::string weather_city;   // знайдена назва «Місто, CC»
 };
 
 std::string light_program_to_api(LightProgram p);

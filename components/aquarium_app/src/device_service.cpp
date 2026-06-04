@@ -100,7 +100,7 @@ void DeviceService::apply_show_guests_locked() {
 
 void DeviceService::apply_manual_moon_locked() {
   state_.phase_label = "Нічне світло";
-  const float moon = clampf(settings_.moon_brightness_pct / 100.F, 0.03F, 0.08F);
+  const float moon = clampf(settings_.moon_brightness_pct / 100.F, 0.03F, 0.30F);
   const PhaseColors& mc = settings_.custom_phases.moon;
   light_.set_rgbw(mc.r, mc.g, mc.b, mc.w, moon);
   state_.out_r = mc.r; state_.out_g = mc.g;
@@ -114,35 +114,149 @@ uint32_t DeviceService::next_lightning_rand_locked(uint32_t mn, uint32_t mx) {
   return mn + (lightning_rng_ % (mx - mn + 1));
 }
 
-void DeviceService::apply_lightning_locked() {
-  state_.phase_label = lightning_flash_on_ ? "Шторм: спалах" : "Шторм: хмари";
+// ──────────────────────────────────────────────────────────────────
+// ГРОЗА — швидкий цикл (~15 мс) з моделлю на затуханні (afterglow).
+//
+// Природна блискавка = головний розряд + кілька обратних розрядів за ~0.2 с
+// (характерне мерехтіння). Тут кожен «спайк» миттєво підіймає яскравість, а
+// потім вона експоненційно згасає кожен крок — так виходить природний хвіст
+// післясвічення, а серія спайків дає дрож. Сила удару (далекий/близький) і
+// частота ударів пливуть за огинаючою грози (наростання → пік → затихання).
+// ──────────────────────────────────────────────────────────────────
+void DeviceService::drive_storm_fast_locked(int64_t now) {
+  const float ambient = 0.035F;  // тёмне синє грозове марево між спалахами
 
-  if (state_.uptime_ms >= lightning_next_step_ms_) {
-    if (lightning_flash_on_) {
-      lightning_flash_on_ = false;
-      if (lightning_flashes_left_ > 0) {
-        lightning_next_step_ms_ = state_.uptime_ms + next_lightning_rand_locked(80, 180);
-      } else {
-        lightning_flashes_left_ = static_cast<int>(next_lightning_rand_locked(2, 4));
-        lightning_next_step_ms_ = state_.uptime_ms + next_lightning_rand_locked(1400, 3200);
-      }
+  // Огинаюча грози: 0 на старті/в кінці, 1 на піку (дзвін). Керує частотою
+  // та яскравістю ударів — гроза наближається й віддаляється.
+  const float dur = static_cast<float>(lightning_until_ms_ - lightning_start_ms_);
+  float p = dur > 1.F ? static_cast<float>(now - lightning_start_ms_) / dur : 1.F;
+  p = clampf(p, 0.F, 1.F);
+  const float env = std::sin(3.14159265F * p);
+
+  const bool flashing = now < lightning_flash_end_ms_;
+
+  // Початок нового удару. Три ТИПИ вспышки (як у природі):
+  //   0 СТРІЛА  — близький різкий короткий яскравий удар (90–200 мс).
+  //   1 ЗІРНИЦЯ — далекий розлив, освітлює все, ДОВГИЙ і м'який (350–650 мс).
+  //   2 ВІДБЛИСК— слабкий синюватий далекий спалах (220–450 мс).
+  // Вспышка тримається свою тривалість і всередині дрожить (не гасне у темряву) —
+  // саме це читається як мерехтіння блискавки.
+  if (!flashing && now >= lightning_next_strike_ms_) {
+    const uint32_t roll = next_lightning_rand_locked(0, 99);
+    uint32_t dur;
+    if (roll < 45) {            // СТРІЛА (45%)
+      lightning_type_ = 0;
+      lightning_intensity_ = clampf((0.90F + next_lightning_rand_locked(0, 10) / 100.F) * (0.85F + 0.15F * env), 0.5F, 1.F);
+      dur = next_lightning_rand_locked(90, 200);
+    } else if (roll < 78) {     // ЗІРНИЦЯ (33%)
+      lightning_type_ = 1;
+      lightning_intensity_ = clampf((0.55F + next_lightning_rand_locked(0, 25) / 100.F) * (0.80F + 0.20F * env), 0.4F, 1.F);
+      dur = next_lightning_rand_locked(350, 650);
+    } else {                    // ВІДБЛИСК (22%)
+      lightning_type_ = 2;
+      lightning_intensity_ = clampf(0.30F + next_lightning_rand_locked(0, 20) / 100.F, 0.25F, 0.6F);
+      dur = next_lightning_rand_locked(220, 450);
+    }
+    lightning_flash_end_ms_ = now + dur;
+    lightning_next_spike_ms_ = now;  // дрож одразу
+    // Інтервал до наступного удару: 35% — КЛАСТЕР (швидкий повтор, гроза «рвана»),
+    // інакше довга пауза (на піку грози коротша).
+    if (next_lightning_rand_locked(0, 99) < 35) {
+      lightning_next_strike_ms_ = lightning_flash_end_ms_ + next_lightning_rand_locked(120, 650);
     } else {
-      lightning_flash_on_ = true;
-      lightning_next_step_ms_ = state_.uptime_ms + next_lightning_rand_locked(60, 140);
-      if (lightning_flashes_left_ > 0) --lightning_flashes_left_;
+      const uint32_t gmin = static_cast<uint32_t>(2400.F + (900.F - 2400.F) * env);
+      const uint32_t gmax = static_cast<uint32_t>(5500.F + (2200.F - 5500.F) * env);
+      lightning_next_strike_ms_ = lightning_flash_end_ms_ + next_lightning_rand_locked(gmin, gmax);
     }
   }
 
-  if (lightning_flash_on_) {
-    const float flash = clampf(static_cast<float>(70 + next_lightning_rand_locked(0, 25)) / 100.F, 0.7F, 0.95F);
-    light_.set_rgbw(0.9F, 0.95F, 1.F, 1.F, flash);
-    state_.out_r = 0.9F; state_.out_g = 0.95F; state_.out_b = 1.F; state_.out_w = 1.F;
-    state_.out_brightness = flash;
+  if (now < lightning_flash_end_ms_) {
+    // Каденція й глибина дрожання залежать від типу: стріла — швидко й різко,
+    // зірниця — повільно й м'яко (стале яскраве світло, що ледь тремтить).
+    uint32_t cad_min, cad_max;
+    float floor_k;
+    if (lightning_type_ == 0)      { cad_min = 14; cad_max = 30; floor_k = 0.45F; }
+    else if (lightning_type_ == 1) { cad_min = 32; cad_max = 62; floor_k = 0.62F; }
+    else                           { cad_min = 26; cad_max = 52; floor_k = 0.50F; }
+
+    if (now >= lightning_next_spike_ms_) {
+      const float k = floor_k + next_lightning_rand_locked(0, 100) / 100.F * (1.F - floor_k);
+      lightning_level_ = clampf(lightning_intensity_ * k, ambient, 1.F);
+      lightning_next_spike_ms_ = now + next_lightning_rand_locked(cad_min, cad_max);
+    }
+
+    // М'який хвіст: останні fade_len мс плавно гасимо до фону (зірниця — довше).
+    const int64_t fade_len = (lightning_type_ == 0) ? 45 : (lightning_type_ == 1 ? 160 : 110);
+    const int64_t left = lightning_flash_end_ms_ - now;
+    if (left < fade_len) {
+      const float f = static_cast<float>(left) / static_cast<float>(fade_len);
+      lightning_level_ = ambient + (lightning_level_ - ambient) * f;
+    }
   } else {
-    light_.set_rgbw(0.04F, 0.08F, 0.22F, 0.1F, 0.035F);
-    state_.out_r = 0.04F; state_.out_g = 0.08F; state_.out_b = 0.22F; state_.out_w = 0.1F;
-    state_.out_brightness = 0.035F;
+    lightning_level_ = ambient;  // між ударами — темне синє марево
   }
+
+  float r, g, b, w, br;
+  if (lightning_level_ > ambient + 0.01F) {
+    // Колір за типом: близький удар біліший, далекий — синіший (розсіювання).
+    if (lightning_type_ == 0)      { r = 0.70F; g = 0.90F; b = 1.F; w = 1.00F; }  // стріла
+    else if (lightning_type_ == 1) { r = 0.62F; g = 0.85F; b = 1.F; w = 0.92F; }  // зірниця
+    else                           { r = 0.42F; g = 0.70F; b = 1.F; w = 0.60F; }  // відблиск
+    br = lightning_level_;
+    state_.phase_label = "Шторм: блискавка";
+  } else {
+    r = 0.04F; g = 0.08F; b = 0.22F; w = 0.10F; br = ambient;
+    state_.phase_label = "Шторм: хмари";
+  }
+  light_.set_rgbw(r, g, b, w, br);
+  state_.out_r = r; state_.out_g = g; state_.out_b = b; state_.out_w = w;
+  state_.out_brightness = br;
+  state_.scene_mode = SceneMode::STORM;
+}
+
+void DeviceService::weather_get_city(char* buf, size_t buf_len) const {
+  if (buf == nullptr || buf_len == 0) return;
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
+    strncpy(buf, settings_.weather_city, buf_len - 1);
+    buf[buf_len - 1] = '\0';
+    xSemaphoreGive(mutex_);
+  } else {
+    buf[0] = '\0';
+  }
+}
+
+void DeviceService::weather_set_result(const WeatherData& wd, const char* resolved_city) {
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(200)) != pdTRUE) return;
+  state_.weather_valid   = wd.valid;
+  state_.weather_code    = wd.code;
+  state_.weather_cloud   = wd.cloud_cover;
+  state_.weather_temp_c  = wd.temp_c;
+  state_.weather_wind    = wd.wind_kmh;
+  state_.weather_is_day  = wd.is_day;
+  if (resolved_city != nullptr) state_.weather_city = resolved_city;
+  xSemaphoreGive(mutex_);
+}
+
+void DeviceService::arm_storm_locked(int64_t now, int duration_ms) {
+  lightning_rng_ ^= static_cast<uint32_t>(now);
+  lightning_start_ms_ = now;
+  lightning_until_ms_ = now + duration_ms;
+  lightning_level_ = 0.035F;
+  lightning_intensity_ = 0.F;
+  lightning_flash_end_ms_ = 0;
+  lightning_next_strike_ms_ = now + next_lightning_rand_locked(300, 900);
+  lightning_next_spike_ms_ = now;
+}
+
+bool DeviceService::storm_task_step() {
+  bool active = false;
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
+    const int64_t now = esp_timer_get_time() / 1000;
+    active = now < lightning_until_ms_;
+    if (active) drive_storm_fast_locked(now);
+    xSemaphoreGive(mutex_);
+  }
+  return active;
 }
 
 // ── tick ──────────────────────────────────────────────────────────
@@ -165,6 +279,18 @@ void DeviceService::refresh_live_state_locked(bool read_sensor) {
     }
   }
 
+  // Реальна гроза за погодою (під галочкою) → періодично заводимо storm-ефект
+  // (30 с кожні 3–5 хв, поки погода грозова), тільки в авто-режимі.
+  if (settings_.weather_link && state_.weather_valid &&
+      settings_.operation_mode == OperationMode::AUTO_24H && !guest_scene_active_ &&
+      (state_.weather_code == 95 || state_.weather_code == 96 || state_.weather_code == 99)) {
+    if (state_.uptime_ms >= next_weather_storm_ms_ && lightning_until_ms_ <= state_.uptime_ms) {
+      arm_storm_locked(state_.uptime_ms, 30000);
+      next_weather_storm_ms_ =
+          state_.uptime_ms + 180000 + static_cast<int64_t>(next_lightning_rand_locked(0, 120)) * 1000;
+    }
+  }
+
   const bool feed_active      = feed_until_ms_      > state_.uptime_ms;
   const bool lightning_active = lightning_until_ms_  > state_.uptime_ms;
 
@@ -178,8 +304,9 @@ void DeviceService::refresh_live_state_locked(bool read_sensor) {
     state_.scene_mode = SceneMode::SHOW_GUESTS;
     apply_show_guests_locked();
   } else if (lightning_active) {
+    // Світлом керує швидка задача aq_storm (drive_storm_fast_locked) ~15 мс,
+    // тут лише фіксуємо сцену й не чіпаємо вихід, щоб не було двох письменників.
     state_.scene_mode = SceneMode::STORM;
-    apply_lightning_locked();
   } else if (moon_scene_active_) {
     state_.scene_mode = SceneMode::MOON_TEMP;
     apply_manual_moon_locked();
@@ -210,6 +337,34 @@ void DeviceService::apply_manual_light_locked() {
   state_.out_brightness = settings_.manual_brightness;
 }
 
+// Модифікує денний таргет за реальною погодою (тільки коли увімкнено галочку).
+// Хмарність гасить яскравість; опади/туман додають приглушення й зсув кольору.
+void DeviceService::apply_weather_to_target_locked(RgbwTarget& t) {
+  const float cloud = clampf(state_.weather_cloud / 100.F, 0.F, 1.F);
+  float dim = 1.F - 0.55F * cloud;  // ясно=1.0, суцільна хмарність≈0.45 (і місяць тьмяніє)
+  const int c = state_.weather_code;
+  bool greyer = false, cooler = false;
+  if (c == 45 || c == 48) {                                  // туман
+    dim *= 0.75F; greyer = true;
+  } else if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) {  // мряка/дощ/зливи
+    dim *= 0.85F; cooler = true;
+  } else if ((c >= 71 && c <= 77) || c == 85 || c == 86) {    // сніг
+    dim *= 0.95F;
+  }
+  t.brightness = clampf(t.brightness * dim, 0.F, 1.F);
+  if (cooler) {  // дощ — холодніше: трохи прибрати червоний, додати синього
+    t.r *= 0.90F;
+    t.b = std::min(1.F, t.b * 1.05F);
+  }
+  if (greyer) {  // туман — сіріше: підтягнути канали до середнього (десатурація)
+    const float avg = (t.r + t.g + t.b) / 3.F;
+    t.r += (avg - t.r) * 0.30F;
+    t.g += (avg - t.g) * 0.30F;
+    t.b += (avg - t.b) * 0.30F;
+    t.w = std::min(1.F, t.w * 1.10F);
+  }
+}
+
 void DeviceService::apply_auto_light_locked() {
   const bool time_ok       = time_.is_valid();
   const bool time_fallback = !time_ok && state_.uptime_ms > 90'000;
@@ -229,6 +384,10 @@ void DeviceService::apply_auto_light_locked() {
   std::string ph;
   RgbwTarget t{};
   schedule_.compute(hour, settings_, state_.thermal_throttle, ph, t);
+  if (settings_.weather_link && state_.weather_valid) {
+    apply_weather_to_target_locked(t);
+    ph += " · погода";
+  }
   state_.phase_label = time_fallback ? (ph + " · без SNTP") : ph;
 
   if (t.brightness < 0.01F) {
@@ -388,12 +547,9 @@ std::string DeviceService::handle_ws_json(const char* json) {
   }
   if (strcmp(cmd, "scene_lightning") == 0) {
     guest_scene_active_ = moon_scene_active_ = false;
-    state_.uptime_ms = esp_timer_get_time() / 1000;
-    lightning_rng_ ^= static_cast<uint32_t>(state_.uptime_ms);
-    lightning_until_ms_ = state_.uptime_ms + 12000;
-    lightning_flashes_left_ = static_cast<int>(next_lightning_rand_locked(2, 4));
-    lightning_flash_on_ = false;
-    lightning_next_step_ms_ = state_.uptime_ms + next_lightning_rand_locked(120, 280);
+    const int64_t now = esp_timer_get_time() / 1000;
+    state_.uptime_ms = now;
+    arm_storm_locked(now, 30000);  // ~30 с грози з огинаючою наростання→пік→затихання
     cJSON_Delete(root); xSemaphoreGive(mutex_);
     return R"({"type":"ack"})";
   }
@@ -450,6 +606,8 @@ char* DeviceService::export_settings_data_json_malloc() const {
   cJSON_AddNumberToObject(d, "scene_mode",          static_cast<double>(static_cast<int>(state_.scene_mode)));
   cJSON_AddStringToObject(d, "timezone_country",    settings_.timezone_country);
   cJSON_AddStringToObject(d, "timezone_posix",      settings_.timezone_posix);
+  cJSON_AddStringToObject(d, "weather_city",        settings_.weather_city);
+  cJSON_AddBoolToObject(d,   "weather_link",        settings_.weather_link);
 
   // manual RGBW
   cJSON* man = cJSON_CreateObject();
@@ -561,6 +719,14 @@ std::string DeviceService::import_settings_data_json(const char* json_object) {
     time_.set_timezone(settings_.timezone_posix);
     dirty_settings_ = true;
   }
+
+  it = cJSON_GetObjectItemCaseSensitive(root, "weather_city");
+  if (cJSON_IsString(it) && it->valuestring) {
+    copy_json_str(settings_.weather_city, sizeof(settings_.weather_city), it);
+    dirty_settings_ = true;
+  }
+  it = cJSON_GetObjectItemCaseSensitive(root, "weather_link");
+  if (cJSON_IsBool(it)) { settings_.weather_link = cJSON_IsTrue(it); dirty_settings_ = true; }
 
   // manual
   it = cJSON_GetObjectItemCaseSensitive(root, "manual");

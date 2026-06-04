@@ -7,6 +7,7 @@
 #include "esp_app_desc.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "weather_client.hpp"
 
 namespace aq {
 
@@ -50,6 +51,17 @@ char* state_to_json_malloc(const DeviceState& s) {
   cJSON_AddNumberToObject(d, "time_s", s.time_s);
   cJSON_AddNumberToObject(d, "wifi_rssi", s.wifi_rssi);
   cJSON_AddNumberToObject(d, "uptime_ms", static_cast<double>(s.uptime_ms));
+
+  cJSON_AddBoolToObject(d, "weather_valid", s.weather_valid);
+  if (s.weather_valid) {
+    cJSON_AddNumberToObject(d, "weather_code",   s.weather_code);
+    cJSON_AddNumberToObject(d, "weather_cloud",  s.weather_cloud);
+    cJSON_AddNumberToObject(d, "weather_temp_c", s.weather_temp_c);
+    cJSON_AddNumberToObject(d, "weather_wind",   s.weather_wind);
+    cJSON_AddBoolToObject(d,   "weather_is_day", s.weather_is_day);
+    cJSON_AddStringToObject(d, "weather_city",   s.weather_city.c_str());
+    cJSON_AddStringToObject(d, "weather_desc",   weather_code_text(s.weather_code));
+  }
 
   const esp_app_desc_t* app = esp_app_get_description();
   if (app != nullptr) {
