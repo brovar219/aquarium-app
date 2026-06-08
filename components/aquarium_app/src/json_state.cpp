@@ -7,6 +7,7 @@
 #include "esp_app_desc.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "mqtt_client_hub.hpp"
 #include "weather_client.hpp"
 
 namespace aq {
@@ -45,6 +46,7 @@ char* state_to_json_malloc(const DeviceState& s) {
     cJSON_AddNullToObject(d, "water_temp_c");
   }
 
+  cJSON_AddBoolToObject(d, "mqtt_connected", MqttClientHub::is_connected());
   cJSON_AddBoolToObject(d, "time_valid", s.time_valid);
   cJSON_AddNumberToObject(d, "time_h", s.time_h);
   cJSON_AddNumberToObject(d, "time_m", s.time_m);

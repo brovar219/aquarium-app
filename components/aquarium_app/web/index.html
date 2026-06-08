@@ -631,6 +631,15 @@ function applyState(d) {
   if (d.fw_version)    $('fwver').textContent   = d.fw_version;
   if (d.ota_partition) $('otaslot').textContent  = d.ota_partition;
 
+  // Update MQTT pill every state broadcast (not only on get_settings)
+  if ('mqtt_connected' in d) {
+    const mp = $('mqttPill');
+    if (mp && mp.textContent !== 'MQTT вимк' && mp.textContent !== 'MQTT нема IP') {
+      mp.textContent = d.mqtt_connected ? 'MQTT OK' : 'MQTT …';
+      mp.className = 'pill ' + (d.mqtt_connected ? 'ok' : 'bad');
+    }
+  }
+
   powerOn = (d.out_brightness || 0) > 0.02;
 
   if (currentTab === 'manual' && !isUiLocked()) {

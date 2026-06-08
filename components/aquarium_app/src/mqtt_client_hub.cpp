@@ -85,9 +85,12 @@ void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event
     case MQTT_EVENT_ERROR: {
       auto* err_ev = static_cast<esp_mqtt_event_t*>(event_data);
       if (err_ev != nullptr && err_ev->error_handle != nullptr) {
-        ESP_LOGE(TAG, "MQTT error type=%d", err_ev->error_handle->error_type);
+        const auto* eh = err_ev->error_handle;
+        ESP_LOGE(TAG, "MQTT error: type=%d esp_err=0x%x tls_err=%d sock_errno=%d uri=%s",
+                 eh->error_type, eh->esp_tls_last_esp_err,
+                 eh->esp_tls_stack_err, eh->esp_transport_sock_errno, s_uri);
       } else {
-        ESP_LOGE(TAG, "MQTT error");
+        ESP_LOGE(TAG, "MQTT error (no details)");
       }
       break;
     }
@@ -204,15 +207,16 @@ void MqttClientHub::start_from_nvs() {
     mqtt_cfg.credentials.authentication.password = s_cfg.password;
   }
 
-  uint8_t mac[6]{};
-  char default_id[32]{};
-  if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK) {
-    snprintf(default_id, sizeof(default_id), "aq-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4],
-             mac[5]);
-  } else {
-    snprintf(default_id, sizeof(default_id), "aquarium-device");
+  if (s_cfg.client_id[0] == '\0') {
+    uint8_t mac[6]{};
+    if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK) {
+      snprintf(s_cfg.client_id, sizeof(s_cfg.client_id), "aq-%02x%02x%02x%02x%02x%02x",
+               mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } else {
+      snprintf(s_cfg.client_id, sizeof(s_cfg.client_id), "aquarium-device");
+    }
   }
-  mqtt_cfg.credentials.client_id = (s_cfg.client_id[0] != '\0') ? s_cfg.client_id : default_id;
+  mqtt_cfg.credentials.client_id = s_cfg.client_id;
 
   if (s_lwt_topic[0]) {
     mqtt_cfg.session.last_will.topic = s_lwt_topic;
