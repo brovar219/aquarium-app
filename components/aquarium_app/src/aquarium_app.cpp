@@ -28,7 +28,15 @@ static const char* TAG = "aquarium_app";
 namespace aquarium_app {
 
 void start() {
-  ESP_ERROR_CHECK(nvs_flash_init());
+  {
+    esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_LOGW(TAG, "NVS corrupt/full — erasing and re-init");
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      nvs_err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_err);
+  }
   aq::ota_mark_app_valid_if_needed();
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
